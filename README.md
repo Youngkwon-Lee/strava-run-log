@@ -131,8 +131,34 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 ---
 
+## Vercel webhook 배포 (실시간 감지)
+
+1. Vercel 배포
+```bash
+vercel --prod
+```
+
+2. Vercel 환경변수 설정
+- `STRAVA_CLIENT_ID`
+- `STRAVA_CLIENT_SECRET`
+- `STRAVA_REFRESH_TOKEN`
+- `STRAVA_ACCESS_TOKEN`
+- `STRAVA_TOKEN_EXPIRES_AT`
+- `STRAVA_VERIFY_TOKEN` (임의 문자열)
+- `DISCORD_WEBHOOK_URL` (run-log 스레드 웹훅 URL)
+
+3. Strava 구독 등록
+```bash
+export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
+./scripts/register_subscription.sh
+```
+
+4. 검증
+- Strava 러닝 저장 → webhook POST 수신
+- Discord run-log에 자동 요약 메시지 도착 확인
+
 ## Roadmap
-- [ ] webhook 기반 실시간 감지
+- [x] webhook 기반 실시간 감지 (Vercel)
 - [ ] 주간 리포트 자동 생성
 - [ ] 페이스 추세/부하 점수 시각화
 - [ ] MCP 서버로 확장
