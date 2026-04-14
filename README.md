@@ -157,8 +157,38 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 - Strava 러닝 저장 → webhook POST 수신
 - Discord run-log에 자동 요약 메시지 도착 확인
 
+## Live coaching endpoint (Apple Watch/Health bridge)
+
+실시간 데이터 브리지에서 아래 endpoint로 metrics를 push하면 코칭 메시지가 Discord로 전송됩니다.
+
+- `POST /api/live/metrics`
+- Body(JSON):
+```json
+{
+  "session_id": "run-2026-04-14-am",
+  "pace_sec": 365,
+  "hr": 154,
+  "distance_km": 2.4,
+  "elapsed_sec": 910,
+  "force": false
+}
+```
+
+환경변수(선택):
+- `COACH_TARGET_PACE_SEC` (default: 370)
+- `COACH_MAX_HR` (default: 175)
+- `COACH_COOLDOWN_SEC` (default: 90)
+
+테스트 예시:
+```bash
+curl -X POST https://strava-run-log.vercel.app/api/live/metrics \
+  -H 'content-type: application/json' \
+  -d '{"session_id":"test-live","pace_sec":355,"hr":162,"distance_km":3.1,"elapsed_sec":1200,"force":true}'
+```
+
 ## Roadmap
 - [x] webhook 기반 실시간 감지 (Vercel)
+- [x] 실시간 metrics 수신 + 코칭 메시지
 - [ ] 주간 리포트 자동 생성
 - [ ] 페이스 추세/부하 점수 시각화
 - [ ] MCP 서버로 확장

@@ -1,22 +1,8 @@
-import { buildCoachingComment, getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
+import { getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
+import { buildPostRunCoaching } from '../../lib/coaching.js';
+import { postDiscord } from '../../lib/discord.js';
 
 const VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
-
-async function postDiscord(text) {
-  const base = process.env.DISCORD_WEBHOOK_URL;
-  if (!base) return;
-
-  const threadId = process.env.DISCORD_THREAD_ID;
-  const url = threadId
-    ? `${base}${base.includes('?') ? '&' : '?'}thread_id=${encodeURIComponent(threadId)}`
-    : base;
-
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: text })
-  });
-}
 
 export default async function handler(req, res) {
   try {
@@ -39,7 +25,7 @@ export default async function handler(req, res) {
       const token = await refreshTokenIfNeeded();
       const detail = await getActivityDetail(evt.object_id, token);
       const s = summarizeActivity(detail);
-      const coaching = buildCoachingComment(detail, {
+      const coaching = buildPostRunCoaching(detail, {
         targetPaceSec: Number(process.env.COACH_TARGET_PACE_SEC || 370),
         targetRpe: process.env.COACH_TARGET_RPE || '6~7'
       });
