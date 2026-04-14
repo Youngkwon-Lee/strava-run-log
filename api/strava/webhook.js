@@ -1,4 +1,4 @@
-import { getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
+import { buildCoachingComment, getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
 
 const VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
 
@@ -39,10 +39,17 @@ export default async function handler(req, res) {
       const token = await refreshTokenIfNeeded();
       const detail = await getActivityDetail(evt.object_id, token);
       const s = summarizeActivity(detail);
+      const coaching = buildCoachingComment(detail, {
+        targetPaceSec: Number(process.env.COACH_TARGET_PACE_SEC || 370),
+        targetRpe: process.env.COACH_TARGET_RPE || '6~7'
+      });
+
       const txt = [
         '🏃 새 러닝 감지',
         `- ${s.title}`,
-        `- ${s.km}km · ${s.moving} · ${s.pace} · 상승 ${s.elev}m`
+        `- ${s.km}km · ${s.moving} · ${s.pace} · 상승 ${s.elev}m`,
+        '',
+        coaching
       ].join('\n');
       await postDiscord(txt);
 
