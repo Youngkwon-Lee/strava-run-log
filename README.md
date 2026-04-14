@@ -185,6 +185,14 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 - `user_id` (예: `youngkwon`)
 - `readiness_score` (당일 컨디션 점수)
 
+프로필 샘플:
+- `docs/sample-user-profiles.json`
+
+Vercel 환경변수 예시:
+```bash
+COACH_USER_PROFILES_JSON='{"youngkwon":{"target_pace_sec":370,"max_hr":182,"hr_sustained_sec":120,"coaching_frequency_sec":90,"readiness_score":72},"mother":{"target_pace_sec":620,"max_hr":145,"hr_sustained_sec":90,"coaching_frequency_sec":120,"readiness_score":65},"father":{"target_pace_sec":580,"max_hr":150,"hr_sustained_sec":90,"coaching_frequency_sec":120,"readiness_score":68}}'
+```
+
 테스트 예시:
 ```bash
 curl -X POST https://strava-run-log.vercel.app/api/live/metrics \

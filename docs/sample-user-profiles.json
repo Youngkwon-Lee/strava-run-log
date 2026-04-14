@@ -1,0 +1,23 @@
+{
+  "youngkwon": {
+    "target_pace_sec": 370,
+    "max_hr": 182,
+    "hr_sustained_sec": 120,
+    "coaching_frequency_sec": 90,
+    "readiness_score": 72
+  },
+  "mother": {
+    "target_pace_sec": 620,
+    "max_hr": 145,
+    "hr_sustained_sec": 90,
+    "coaching_frequency_sec": 120,
+    "readiness_score": 65
+  },
+  "father": {
+    "target_pace_sec": 580,
+    "max_hr": 150,
+    "hr_sustained_sec": 90,
+    "coaching_frequency_sec": 120,
+    "readiness_score": 68
+  }
+}
