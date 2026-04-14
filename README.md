@@ -178,6 +178,12 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 - `COACH_TARGET_PACE_SEC` (default: 370)
 - `COACH_MAX_HR` (default: 175)
 - `COACH_COOLDOWN_SEC` (default: 90)
+- `COACH_HR_SUSTAINED_SEC` (default: 120)
+- `COACH_USER_PROFILES_JSON` (user별 개인화 설정 JSON)
+
+개인화 입력 필드(선택):
+- `user_id` (예: `youngkwon`)
+- `readiness_score` (당일 컨디션 점수)
 
 테스트 예시:
 ```bash
