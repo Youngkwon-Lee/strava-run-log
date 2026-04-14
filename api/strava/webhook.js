@@ -3,8 +3,14 @@ import { getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../.
 const VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
 
 async function postDiscord(text) {
-  const url = process.env.DISCORD_WEBHOOK_URL;
-  if (!url) return;
+  const base = process.env.DISCORD_WEBHOOK_URL;
+  if (!base) return;
+
+  const threadId = process.env.DISCORD_THREAD_ID;
+  const url = threadId
+    ? `${base}${base.includes('?') ? '&' : '?'}thread_id=${encodeURIComponent(threadId)}`
+    : base;
+
   await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
