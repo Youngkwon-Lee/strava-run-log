@@ -200,9 +200,21 @@ curl -X POST https://strava-run-log.vercel.app/api/live/metrics \
   -d '{"session_id":"test-live","pace_sec":355,"hr":162,"distance_km":3.1,"elapsed_sec":1200,"force":true}'
 ```
 
+## Weekly WHO report endpoint
+
+- `GET /api/strava/weekly-report`
+- 최근 7일 러닝 기준으로 `중강도 분(WHO 150~300분/주)` 요약 계산
+- `?send=true`를 붙이면 Discord로 요약 전송
+
+예시:
+```bash
+curl "https://strava-run-log.vercel.app/api/strava/weekly-report"
+curl "https://strava-run-log.vercel.app/api/strava/weekly-report?send=true"
+```
+
 ## Roadmap
 - [x] webhook 기반 실시간 감지 (Vercel)
 - [x] 실시간 metrics 수신 + 코칭 메시지
-- [ ] 주간 리포트 자동 생성
+- [x] 주간 WHO 기준 리포트 엔드포인트
 - [ ] 페이스 추세/부하 점수 시각화
 - [ ] MCP 서버로 확장
