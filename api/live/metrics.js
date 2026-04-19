@@ -49,7 +49,9 @@ export default async function handler(req, res) {
       paceSec: Number(body.pace_sec || 0),
       hr: Number(body.hr || 0),
       distanceKm: Number(body.distance_km || 0),
-      elapsedSec: Number(body.elapsed_sec || 0)
+      elapsedSec: Number(body.elapsed_sec || 0),
+      cadence: Number(body.cadence || 0),
+      gapSec: Number(body.gap_sec || 0)
     };
 
     const cfg = resolveUserConfig(userId, readinessScore);
