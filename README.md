@@ -20,6 +20,12 @@ running, strava, analytics, discord-bot, social-media
 
 ## Setup (Detailed)
 
+### Local verification
+
+```bash
+npm test
+```
+
 ### 1) Strava API 앱 만들기
 1. `https://www.strava.com/settings/api` 접속
 2. 앱 생성 (아이콘 업로드 필요할 수 있음)
@@ -146,6 +152,7 @@ vercel --prod
 - `STRAVA_TOKEN_EXPIRES_AT`
 - `STRAVA_VERIFY_TOKEN` (임의 문자열)
 - `DISCORD_WEBHOOK_URL` (run-log 스레드 웹훅 URL)
+- `LIVE_METRICS_TOKEN` (Apple Watch/Health bridge 인증용 임의 문자열, 권장)
 
 3. Strava 구독 등록
 ```bash
@@ -174,7 +181,17 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 }
 ```
 
+입력값 범위:
+- `pace_sec`, `gap_sec`: 0~1800초/km (`0`은 데이터 없음)
+- `hr`: 0~240 bpm
+- `distance_km`: 0~200km
+- `elapsed_sec`: 0~86400초
+- `cadence`: 0~260 spm
+- `readiness_score`: 0~100
+- `force`: boolean 또는 `"true"`/`"false"`
+
 환경변수(선택):
+- `LIVE_METRICS_TOKEN` (설정 시 `Authorization: Bearer ...`, `x-live-metrics-token`, 또는 run-live-coach의 `x-live-token` 필요)
 - `COACH_TARGET_PACE_SEC` (default: 370)
 - `COACH_MAX_HR` (default: 175)
 - `COACH_COOLDOWN_SEC` (default: 90)
@@ -197,8 +214,19 @@ COACH_USER_PROFILES_JSON='{"youngkwon":{"target_pace_sec":370,"max_hr":182,"hr_s
 ```bash
 curl -X POST https://strava-run-log.vercel.app/api/live/metrics \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $LIVE_METRICS_TOKEN" \
   -d '{"session_id":"test-live","pace_sec":355,"hr":162,"distance_km":3.1,"elapsed_sec":1200,"force":true}'
 ```
+
+### run-live-coach 연결
+
+`run-live-coach`는 Apple Watch에서 실시간 러닝 데이터를 수집하는 앱이고, 이 프로젝트는 그 데이터를 받아 Discord 코칭으로 바꾸는 백엔드입니다.
+
+연결하려면 `run-live-coach/watch/LiveRun/*.xcconfig`에:
+- `LIVE_METRICS_URL=https://<your-vercel-project>.vercel.app/api/live/metrics`
+- `LIVE_TOKEN=<LIVE_METRICS_TOKEN과 같은 값>`
+
+을 설정합니다. `LIVE_METRICS_URL`이 있으면 `run-live-coach`는 기존 LiveRun 웹 백엔드 대신 이 endpoint로 실시간 metrics를 push합니다.
 
 ## Weekly WHO report endpoint
 
