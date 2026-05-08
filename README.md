@@ -197,6 +197,7 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 - `COACH_COOLDOWN_SEC` (default: 90)
 - `COACH_HR_SUSTAINED_SEC` (default: 120)
 - `COACH_USER_PROFILES_JSON` (user별 개인화 설정 JSON)
+- `ALLOW_SIM_DISCORD_POSTS=true` (`sim-`으로 시작하는 시뮬레이터 세션도 Discord에 보내고 싶을 때만 설정)
 
 개인화 입력 필드(선택):
 - `user_id` (예: `youngkwon`)

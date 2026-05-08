@@ -250,6 +250,59 @@ test('live metrics returns coaching and observes cooldown', async () => {
   assert.equal(second.body.sent, false);
 });
 
+test('live metrics suppresses simulator sessions from Discord by default', async () => {
+  withEnv({
+    LIVE_METRICS_TOKEN: undefined,
+    ALLOW_SIM_DISCORD_POSTS: undefined
+  });
+  const { default: handler } = await importFresh('../api/live/metrics.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {
+      session_id: 'sim-api-live',
+      pace_sec: 345,
+      hr: 151,
+      distance_km: 1.1,
+      elapsed_sec: 300,
+      force: true
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.sent, false);
+  assert.equal(res.body.action, 'slow_down');
+});
+
+test('live metrics can opt simulator sessions into Discord posts', async () => {
+  withEnv({
+    LIVE_METRICS_TOKEN: undefined,
+    ALLOW_SIM_DISCORD_POSTS: 'true'
+  });
+  const { default: handler } = await importFresh('../api/live/metrics.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {
+      session_id: 'sim-api-live-opt-in',
+      pace_sec: 345,
+      hr: 151,
+      distance_km: 1.1,
+      elapsed_sec: 300,
+      force: true
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.sent, true);
+});
+
 test('live metrics applies user profile settings from env', async () => {
   withEnv({
     LIVE_METRICS_TOKEN: undefined,

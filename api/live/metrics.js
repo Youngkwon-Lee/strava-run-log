@@ -61,6 +61,11 @@ function parseBooleanField(body, field, defaultValue = false) {
   return { error: `${field} must be a boolean` };
 }
 
+function shouldPostDiscord(sessionId) {
+  if (!String(sessionId).startsWith('sim-')) return true;
+  return String(process.env.ALLOW_SIM_DISCORD_POSTS || '').trim().toLowerCase() === 'true';
+}
+
 function validateLiveMetricsPayload(body) {
   const errors = [];
   const collect = (result) => {
@@ -141,7 +146,8 @@ export default async function handler(req, res) {
       nextCheckSec: cfg.cooldownSec
     });
 
-    const sent = force || shouldSend(sessionId, cfg.cooldownSec);
+    const canPostDiscord = shouldPostDiscord(sessionId);
+    const sent = canPostDiscord && (force || shouldSend(sessionId, cfg.cooldownSec));
 
     if (sent) {
       const icon = decision.severity === 'alert' ? '🚨' : decision.severity === 'warn' ? '⚠️' : '🎧';
