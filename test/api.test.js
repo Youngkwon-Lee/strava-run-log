@@ -377,7 +377,7 @@ test('webhook fetches activity details for activity create events', async () => 
   const { default: handler } = await importFresh('../api/strava/webhook.js');
 
   const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
-    assert.match(String(url), /\/api\/v3\/activities\/12345$/);
+    assert.match(String(url), /\/api\/v3\/activities\/12345\?include_all_efforts=true$/);
     assert.equal(options.headers.Authorization, 'Bearer access-token');
     return Response.json({
       id: 12345,
@@ -399,6 +399,78 @@ test('webhook fetches activity details for activity create events', async () => 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { ok: true });
   assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('strava activities endpoint returns rich run details and optional streams', async () => {
+  withEnv({
+    STRAVA_ACCESS_TOKEN: 'access-token',
+    STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600
+  });
+  const { default: handler } = await importFresh('../api/strava/activities.js');
+
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(options.headers.Authorization, 'Bearer access-token');
+    const href = String(url);
+
+    if (href.includes('/api/v3/athlete/activities?')) {
+      assert.match(href, /per_page=100/);
+      return Response.json([
+        { id: 123, type: 'Run', sport_type: 'Run', distance: 5000, moving_time: 1800 },
+        { id: 999, type: 'Ride', sport_type: 'Ride', distance: 20000, moving_time: 3600 }
+      ]);
+    }
+
+    if (href.endsWith('/api/v3/activities/123?include_all_efforts=true')) {
+      return Response.json({
+        id: 123,
+        name: 'Evening Run',
+        type: 'Run',
+        sport_type: 'Run',
+        distance: 5000,
+        moving_time: 1800,
+        elapsed_time: 1850,
+        total_elevation_gain: 42,
+        average_heartrate: 151,
+        average_cadence: 174,
+        calories: 310,
+        map: { summary_polyline: 'abc123' },
+        splits_metric: [{ split: 1, distance: 1000, moving_time: 360 }],
+        laps: [{ id: 1, name: 'Lap 1', distance: 5000, moving_time: 1800 }]
+      });
+    }
+
+    if (href.includes('/api/v3/activities/123/streams?')) {
+      assert.match(href, /keys=/);
+      return Response.json({
+        latlng: { type: 'latlng', data: [[37.1, 127.1], [37.2, 127.2]] },
+        distance: { type: 'distance', data: [0, 5000] },
+        time: { type: 'time', data: [0, 1800] },
+        heartrate: { type: 'heartrate', data: [145, 156] },
+        cadence: { type: 'cadence', data: [170, 176] }
+      });
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    query: { days: '30', limit: '5', streams: 'true' },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.fetched.activityCount, 2);
+  assert.equal(res.body.fetched.runCount, 1);
+  assert.equal(res.body.summary.totalKm, 5);
+  assert.equal(res.body.summary.averagePace, '6:00/km');
+  assert.equal(res.body.activities[0].name, 'Evening Run');
+  assert.equal(res.body.activities[0].pace, '6:00/km');
+  assert.equal(res.body.activities[0].map.summaryPolyline, 'abc123');
+  assert.equal(res.body.activities[0].streamSummary.pointCount, 2);
+  assert.equal(res.body.activities[0].streams.latlng.data.length, 2);
+  assert.equal(fetchMock.mock.callCount(), 3);
 });
 
 test('weekly report summarizes recent Strava runs', async () => {
@@ -426,17 +498,47 @@ test('weekly report summarizes recent Strava runs', async () => {
   });
 
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, {
-    ok: true,
-    summary: {
-      runCount: 2,
-      totalKm: 12.5,
-      moderateMinutes: 75,
-      whoTargetMin: 150,
-      whoTargetMax: 300,
-      progressToMinPct: 50,
-      status: 'below_minimum'
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.source, 'strava');
+  assert.equal(res.body.window.days, 7);
+  assert.match(res.body.window.afterIso, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(res.body.summary, {
+    runCount: 2,
+    totalKm: 12.5,
+    moderateMinutes: 75,
+    whoTargetMin: 150,
+    whoTargetMax: 300,
+    progressToMinPct: 50,
+    status: 'below_minimum',
+    averagePace: '6:00/km',
+    totalElevationGainMeters: 0,
+    longestRun: {
+      distanceKm: 7.5,
+      movingTime: '45:00',
+      pace: '6:00/km'
     }
   });
+  assert.deepEqual(res.body.runs, [
+    {
+      type: 'Run',
+      distanceMeters: 5000,
+      distanceKm: 5,
+      movingTimeSec: 1800,
+      movingTime: '30:00',
+      elapsedTime: '0:00',
+      paceSecPerKm: 360,
+      pace: '6:00/km'
+    },
+    {
+      sportType: 'Run',
+      distanceMeters: 7500,
+      distanceKm: 7.5,
+      movingTimeSec: 2700,
+      movingTime: '45:00',
+      elapsedTime: '0:00',
+      paceSecPerKm: 360,
+      pace: '6:00/km'
+    }
+  ]);
   assert.equal(fetchMock.mock.callCount(), 1);
 });

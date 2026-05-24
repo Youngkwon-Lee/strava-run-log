@@ -1,4 +1,4 @@
-import { getActivityDetail, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
+import { getActivityDetail, normalizeActivity, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
 import { buildPostRunCoaching } from '../../lib/coaching.js';
 import { postDiscord } from '../../lib/discord.js';
 
@@ -25,18 +25,26 @@ export default async function handler(req, res) {
       const token = await refreshTokenIfNeeded();
       const detail = await getActivityDetail(evt.object_id, token);
       const s = summarizeActivity(detail);
+      const normalized = normalizeActivity(detail);
       const coaching = buildPostRunCoaching(detail, {
         targetPaceSec: Number(process.env.COACH_TARGET_PACE_SEC || 370),
         targetRpe: process.env.COACH_TARGET_RPE || '6~7'
       });
+      const extra = [
+        normalized.averageHeartrate ? `평균 HR ${Math.round(normalized.averageHeartrate)}` : '',
+        normalized.averageCadence ? `케이던스 ${Math.round(normalized.averageCadence)}` : '',
+        normalized.calories ? `${Math.round(normalized.calories)}kcal` : '',
+        normalized.deviceName || ''
+      ].filter(Boolean);
 
       const txt = [
         '🏃 새 러닝 감지',
         `- ${s.title}`,
         `- ${s.km}km · ${s.moving} · ${s.pace} · 상승 ${s.elev}m`,
+        extra.length ? `- ${extra.join(' · ')}` : '',
         '',
         coaching
-      ].join('\n');
+      ].filter((line) => line !== '').join('\n');
       await postDiscord(txt);
 
       return res.status(200).json({ ok: true });

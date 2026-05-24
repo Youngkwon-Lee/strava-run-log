@@ -1,4 +1,4 @@
-import { refreshTokenIfNeeded } from '../../lib/strava.js';
+import { isRunActivity, listAthleteActivities, normalizeActivity, refreshTokenIfNeeded, summarizeActivities } from '../../lib/strava.js';
 import { postDiscord } from '../../lib/discord.js';
 
 function startOfWindow(days = 7) {
@@ -14,15 +14,17 @@ export default async function handler(req, res) {
     const token = await refreshTokenIfNeeded();
     const after = Math.floor(startOfWindow(7).getTime() / 1000);
 
-    const r = await fetch(`https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=100`, {
-      headers: { Authorization: `Bearer ${token}` }
+    const activities = await listAthleteActivities(token, {
+      after,
+      perPage: 100,
+      limit: 200,
+      maxPages: 3
     });
-    if (!r.ok) throw new Error(`strava activities failed: ${r.status}`);
-    const activities = await r.json();
+    const runs = activities.filter(isRunActivity).map(normalizeActivity);
+    const rollup = summarizeActivities(runs);
 
-    const runs = activities.filter((a) => a.type === 'Run' || a.sport_type === 'Run');
-    const movingSec = runs.reduce((sum, a) => sum + Number(a.moving_time || 0), 0);
-    const totalKm = runs.reduce((sum, a) => sum + Number(a.distance || 0), 0) / 1000;
+    const movingSec = runs.reduce((sum, a) => sum + Number(a.movingTimeSec || 0), 0);
+    const totalKm = runs.reduce((sum, a) => sum + Number(a.distanceMeters || 0), 0) / 1000;
 
     const moderateMin = Math.round(movingSec / 60);
     const whoMin = 150;
@@ -41,7 +43,12 @@ export default async function handler(req, res) {
           ? 'below_minimum'
           : moderateMin <= whoMax
             ? 'in_recommended_range'
-            : 'above_recommended_range'
+            : 'above_recommended_range',
+      averagePace: rollup.averagePace,
+      totalElevationGainMeters: rollup.totalElevationGainMeters || 0,
+      ...(rollup.averageHeartrate ? { averageHeartrate: rollup.averageHeartrate } : {}),
+      ...(rollup.averageCadence ? { averageCadence: rollup.averageCadence } : {}),
+      ...(rollup.longestRun ? { longestRun: rollup.longestRun } : {})
     };
 
     if (String(req.query.send || '').toLowerCase() === 'true') {
@@ -56,7 +63,17 @@ export default async function handler(req, res) {
       await postDiscord(text);
     }
 
-    return res.status(200).json({ ok: true, summary });
+    return res.status(200).json({
+      ok: true,
+      source: 'strava',
+      window: {
+        days: 7,
+        after,
+        afterIso: new Date(after * 1000).toISOString()
+      },
+      summary,
+      runs
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
