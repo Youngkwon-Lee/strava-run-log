@@ -1,10 +1,12 @@
 import {
+  filterMinimumDistance,
   getActivityDetail,
   getActivityStreams,
   isRunActivity,
   listAthleteActivities,
   normalizeActivity,
   refreshTokenIfNeeded,
+  sortActivitiesNewestFirst,
   summarizeActivities
 } from '../../lib/strava.js';
 
@@ -21,6 +23,12 @@ function parseInteger(value, { min, max, fallback }) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
+function parseNumber(value, { min, max, fallback }) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
 
 function unixSecondsFromQuery(value) {
@@ -77,6 +85,10 @@ export default async function handler(req, res) {
     const perPage = parseInteger(query.per_page, { min: 1, max: 200, fallback: 100 });
     const includeDetails = parseBoolean(query.details, true);
     const includeStreams = parseBoolean(query.streams, false);
+    const includeShort = parseBoolean(query.include_short, false);
+    const minDistanceKm = includeShort
+      ? 0
+      : parseNumber(query.min_distance_km, { min: 0, max: 5, fallback: 0.05 });
     const window = getWindow(query);
 
     const token = await refreshTokenIfNeeded();
@@ -88,11 +100,14 @@ export default async function handler(req, res) {
       maxPages: 5
     });
 
-    const runs = activities.filter(isRunActivity).slice(0, limit);
+    const allRuns = activities.filter(isRunActivity);
+    const filteredRuns = filterMinimumDistance(allRuns, minDistanceKm);
+    const runs = sortActivitiesNewestFirst(filteredRuns).slice(0, limit);
     const enriched = [];
     for (const run of runs) {
       enriched.push(await enrichActivity(run, token, { includeDetails, includeStreams }));
     }
+    const sorted = sortActivitiesNewestFirst(enriched);
 
     return res.status(200).json({
       ok: true,
@@ -102,14 +117,17 @@ export default async function handler(req, res) {
         ...window,
         limit,
         includeDetails,
-        includeStreams
+        includeStreams,
+        includeShort,
+        minDistanceKm
       },
       fetched: {
         activityCount: activities.length,
-        runCount: enriched.length
+        runCount: sorted.length,
+        ignoredShortRunCount: allRuns.length - filteredRuns.length
       },
-      summary: summarizeActivities(enriched),
-      activities: enriched
+      summary: summarizeActivities(sorted),
+      activities: sorted
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

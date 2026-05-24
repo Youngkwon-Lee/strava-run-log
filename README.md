@@ -149,12 +149,14 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 - `limit=20`
 - `details=true` (`/activities/{id}` 상세 조회 포함)
 - `streams=false` (GPS/심박/케이던스 배열은 크므로 필요할 때만)
+- `min_distance_km=0.05` (50m 미만 테스트/오작동 기록 제외)
 
 예시:
 
 ```bash
 curl "https://<your-domain>/api/strava/activities?days=90&limit=50&details=true"
 curl "https://<your-domain>/api/strava/activities?days=30&limit=10&streams=true"
+curl "https://<your-domain>/api/strava/activities?include_short=true"
 ```
 
 주요 응답 필드:

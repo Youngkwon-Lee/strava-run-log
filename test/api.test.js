@@ -416,6 +416,7 @@ test('strava activities endpoint returns rich run details and optional streams',
       assert.match(href, /per_page=100/);
       return Response.json([
         { id: 123, type: 'Run', sport_type: 'Run', distance: 5000, moving_time: 1800 },
+        { id: 124, type: 'Run', sport_type: 'Run', distance: 10, moving_time: 5 },
         { id: 999, type: 'Ride', sport_type: 'Ride', distance: 20000, moving_time: 3600 }
       ]);
     }
@@ -461,8 +462,9 @@ test('strava activities endpoint returns rich run details and optional streams',
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
-  assert.equal(res.body.fetched.activityCount, 2);
+  assert.equal(res.body.fetched.activityCount, 3);
   assert.equal(res.body.fetched.runCount, 1);
+  assert.equal(res.body.fetched.ignoredShortRunCount, 1);
   assert.equal(res.body.summary.totalKm, 5);
   assert.equal(res.body.summary.averagePace, '6:00/km');
   assert.equal(res.body.activities[0].name, 'Evening Run');
@@ -486,6 +488,7 @@ test('weekly report summarizes recent Strava runs', async () => {
     assert.equal(options.headers.Authorization, 'Bearer access-token');
     return Response.json([
       { type: 'Run', distance: 5000, moving_time: 1800 },
+      { type: 'Run', distance: 10, moving_time: 5 },
       { sport_type: 'Run', distance: 7500, moving_time: 2700 },
       { type: 'Ride', distance: 20000, moving_time: 3600 }
     ]);

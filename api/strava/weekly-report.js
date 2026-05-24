@@ -1,4 +1,12 @@
-import { isRunActivity, listAthleteActivities, normalizeActivity, refreshTokenIfNeeded, summarizeActivities } from '../../lib/strava.js';
+import {
+  filterMinimumDistance,
+  isRunActivity,
+  listAthleteActivities,
+  normalizeActivity,
+  refreshTokenIfNeeded,
+  sortActivitiesNewestFirst,
+  summarizeActivities
+} from '../../lib/strava.js';
 import { postDiscord } from '../../lib/discord.js';
 
 function startOfWindow(days = 7) {
@@ -20,7 +28,8 @@ export default async function handler(req, res) {
       limit: 200,
       maxPages: 3
     });
-    const runs = activities.filter(isRunActivity).map(normalizeActivity);
+    const allRuns = activities.filter(isRunActivity);
+    const runs = sortActivitiesNewestFirst(filterMinimumDistance(allRuns, 0.05).map(normalizeActivity));
     const rollup = summarizeActivities(runs);
 
     const movingSec = runs.reduce((sum, a) => sum + Number(a.movingTimeSec || 0), 0);
@@ -69,7 +78,13 @@ export default async function handler(req, res) {
       window: {
         days: 7,
         after,
-        afterIso: new Date(after * 1000).toISOString()
+        afterIso: new Date(after * 1000).toISOString(),
+        minDistanceKm: 0.05
+      },
+      fetched: {
+        activityCount: activities.length,
+        runCount: runs.length,
+        ignoredShortRunCount: allRuns.length - runs.length
       },
       summary,
       runs
