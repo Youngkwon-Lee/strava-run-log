@@ -138,17 +138,24 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 ---
 
-## Strava data endpoints
+## Running app integrations
 
-### User OAuth flow
+### Integration hub
 
-배포된 서비스에서 사용자는 `/settings.html`에서 Strava를 직접 연결할 수 있습니다.
+배포된 서비스에서 사용자는 `/settings.html`에서 연동 가능한 러닝 앱을 확인하고 Strava를 직접 연결할 수 있습니다.
 
 - `GET /settings.html`: 연결 설정 페이지
+- `GET /api/integrations/providers`: Strava, Apple Health, Garmin, Nike Run Club 연동 상태/방식
 - `GET /api/strava/connect`: Strava OAuth 승인 시작
 - `GET /api/strava/callback`: Strava 승인 후 토큰 교환
 - `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
 - `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
+
+서비스별 현재 전략:
+- Strava: OAuth 2.0 직접 연동 완료
+- Apple Health: 웹 OAuth가 아니라 iOS HealthKit 권한이 필요하므로 iPhone/Watch bridge 앱에서 연결
+- Garmin: Garmin Health API는 Developer Program 승인 후 연결
+- Nike Run Club: 공식 공개 API가 없어 Nike→Strava 동기화 또는 스크린샷/파일 import 경로 사용
 
 사용자별 토큰은 서버 DB 없이 암호화된 HttpOnly 쿠키에 저장됩니다. 운영 환경에는 쿠키 암호화를 위해 `STRAVA_SESSION_SECRET`을 추가로 설정하는 것을 권장합니다. 값이 없으면 `STRAVA_CLIENT_SECRET`을 사용합니다.
 

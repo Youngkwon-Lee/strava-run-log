@@ -422,6 +422,25 @@ test('webhook fetches activity details for activity create events', async () => 
   assert.equal(fetchMock.mock.callCount(), 1);
 });
 
+test('integration providers exposes provider rollout status', async () => {
+  const { default: handler } = await importFresh('../api/integrations/providers.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.deepEqual(res.body.rollout.directOAuth, ['strava']);
+  assert.equal(res.body.providers.find((provider) => provider.id === 'strava').status, 'live');
+  assert.equal(res.body.providers.find((provider) => provider.id === 'apple-health').status, 'mobile_app_required');
+  assert.equal(res.body.providers.find((provider) => provider.id === 'garmin').status, 'partner_review_required');
+  assert.equal(res.body.providers.find((provider) => provider.id === 'nike-run-club').status, 'no_public_api');
+});
+
 test('strava connect redirects to OAuth and sets state cookie', async () => {
   withEnv({
     STRAVA_CLIENT_ID: '12345',

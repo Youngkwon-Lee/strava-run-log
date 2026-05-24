@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Strava 연결 설정</title>
+    <title>러닝 앱 연동 설정</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -119,6 +119,13 @@
         gap: 10px;
       }
 
+      .providers {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .provider,
       .record {
         display: grid;
         gap: 4px;
@@ -126,6 +133,13 @@
         padding-top: 10px;
       }
 
+      .provider:first-child,
+      .record:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .provider strong,
       .record strong {
         font-size: 16px;
       }
@@ -179,6 +193,7 @@
           color: #edf2ee;
         }
 
+        .provider,
         .record {
           border-top-color: #2f3833;
         }
@@ -189,8 +204,8 @@
     <main>
       <header>
         <div>
-          <h1>Strava 연결 설정</h1>
-          <p>Strava를 승인하면 이 브라우저에서 내 러닝 기록을 바로 불러옵니다.</p>
+          <h1>러닝 앱 연동 설정</h1>
+          <p>Strava는 바로 연결하고, Apple Health/Garmin/Nike는 가능한 연동 방식을 확인합니다.</p>
         </div>
         <a class="secondary button" href="/">홈</a>
       </header>
@@ -209,6 +224,16 @@
 
       <section>
         <div>
+          <h2 style="margin: 0 0 6px; font-size: 20px;">연동 가능한 서비스</h2>
+          <p>서비스마다 공식 API 방식이 달라서 실제 연결 경로를 구분해 표시합니다.</p>
+        </div>
+        <div class="providers" id="providers">
+          <p class="muted">연동 정보를 불러오고 있습니다.</p>
+        </div>
+      </section>
+
+      <section>
+        <div>
           <h2 style="margin: 0 0 6px; font-size: 20px;">최근 러닝</h2>
           <p>50m 미만 테스트 기록은 기본으로 제외합니다.</p>
         </div>
@@ -221,6 +246,7 @@
     <script>
       const statusEl = document.querySelector('#status');
       const recordsEl = document.querySelector('#records');
+      const providersEl = document.querySelector('#providers');
       const refreshButton = document.querySelector('#refresh');
       const disconnectButton = document.querySelector('#disconnect');
 
@@ -271,6 +297,48 @@
           .join('');
       }
 
+      function providerStatusText(status) {
+        const labels = {
+          live: '바로 연결 가능',
+          mobile_app_required: 'iOS 앱 필요',
+          partner_review_required: '파트너 승인 필요',
+          no_public_api: '공개 API 없음'
+        };
+        return labels[status] || status;
+      }
+
+      function renderProviders(providers) {
+        providersEl.innerHTML = providers
+          .map((provider) => `
+            <div class="provider">
+              <span class="badge ${provider.status === 'live' ? 'connected' : ''}">${providerStatusText(provider.status)}</span>
+              <strong>${provider.name}</strong>
+              <span class="muted">${provider.method}</span>
+              <p>${provider.summary}</p>
+              <p class="muted">${provider.caveat}</p>
+              <div class="row">
+                ${
+                  provider.actionUrl
+                    ? `<a class="button" href="${provider.actionUrl}">${provider.actionLabel}</a>`
+                    : `<button class="secondary" type="button" disabled>${provider.actionLabel}</button>`
+                }
+                <a class="secondary button" href="${provider.docsUrl}" target="_blank" rel="noreferrer">공식 문서</a>
+              </div>
+            </div>
+          `)
+          .join('');
+      }
+
+      async function loadProviders() {
+        try {
+          const data = await fetch('/api/integrations/providers').then((r) => r.json());
+          if (!data.ok) throw new Error(data.error || 'providers failed');
+          renderProviders(data.providers);
+        } catch (e) {
+          providersEl.innerHTML = `<p class="muted">연동 정보를 불러오지 못했습니다. ${e.message}</p>`;
+        }
+      }
+
       async function loadMe() {
         const me = await fetch('/api/strava/me').then((r) => r.json());
         setStatus(me);
@@ -299,6 +367,7 @@
         renderRecords([]);
       });
 
+      loadProviders();
       loadMe().then((me) => {
         if (me.connected) loadRecords();
       });
