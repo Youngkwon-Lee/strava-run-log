@@ -153,7 +153,7 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 서비스별 현재 전략:
 - Strava: OAuth 2.0 직접 연동 완료
-- Apple Health: 웹 OAuth가 아니라 iOS HealthKit 권한이 필요하므로 iPhone/Watch bridge 앱에서 연결
+- Apple Health: 웹 OAuth가 아니라 iOS HealthKit 권한이 필요하므로 iPhone/Watch bridge 앱에서 연결. 백엔드 ingest API 준비 완료
 - Garmin: Garmin Health API는 Developer Program 승인 후 연결
 - Nike Run Club: 공식 공개 API가 없어 Nike→Strava 동기화 또는 스크린샷/파일 import 경로 사용
 
@@ -168,6 +168,46 @@ strava-run-log.vercel.app
 ```
 
 주의: 새 Strava 앱은 기본적으로 Athlete Capacity 1(Single Player Mode)입니다. 실제 여러 사용자에게 공개하려면 Strava Developer Program review를 통과해서 capacity를 늘려야 합니다.
+
+### `POST /api/apple-health/ingest`
+
+HealthKit 권한을 가진 iPhone 브리지 앱이 Apple Health 러닝 요약을 서버로 보낼 때 사용합니다.
+
+인증:
+- `Authorization: Bearer <APPLE_HEALTH_INGEST_TOKEN>` 또는 `x-api-key`
+- `APPLE_HEALTH_SIGNING_SECRET`가 설정된 경우 `x-signature: HMAC_SHA256_HEX(body)`
+
+예시:
+
+```json
+{
+  "external_run_id": "apple_health_9D57D7F9-4C2B-4A2A-8B70-4E47A6B9F211",
+  "user_id": "youngkwon",
+  "started_at": "2026-05-25T06:12:10Z",
+  "ended_at": "2026-05-25T06:43:40Z",
+  "distance_m": 5540.8,
+  "moving_time_s": 1879,
+  "elapsed_time_s": 1890,
+  "elevation_gain_m": 36.1,
+  "avg_hr": 165.1,
+  "max_hr": 185,
+  "cadence_avg": 174,
+  "calories": 432,
+  "device_source": "Apple Watch Ultra",
+  "source_app": "Apple Health",
+  "splits": [
+    { "km": 1, "moving_time_s": 351, "avg_hr": 153.2 },
+    { "km": 2, "moving_time_s": 338, "avg_hr": 162.1 }
+  ]
+}
+```
+
+응답:
+- `200`: 정규화된 요약 + 코칭 문구 + Discord 전송 여부
+- `400`: payload 검증 실패
+- `401`: 토큰 또는 signature 오류
+
+이 endpoint는 현재 서버리스 MVP라 영구 저장소 없이 검증/요약/Discord 자동 리포트에 집중합니다. 나중에 `run-live-coach`의 import/storage 흐름과 붙이면 러닝 히스토리 저장까지 확장할 수 있습니다.
 
 ### `GET /api/strava/activities`
 

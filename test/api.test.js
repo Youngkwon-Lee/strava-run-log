@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { afterEach, mock, test } from 'node:test';
 
 const restoreEnvFns = [];
@@ -436,9 +437,110 @@ test('integration providers exposes provider rollout status', async () => {
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.rollout.directOAuth, ['strava']);
   assert.equal(res.body.providers.find((provider) => provider.id === 'strava').status, 'live');
-  assert.equal(res.body.providers.find((provider) => provider.id === 'apple-health').status, 'mobile_app_required');
+  assert.deepEqual(res.body.rollout.bridgeBackendReady, ['apple-health']);
+  assert.equal(res.body.providers.find((provider) => provider.id === 'apple-health').status, 'bridge_backend_ready');
   assert.equal(res.body.providers.find((provider) => provider.id === 'garmin').status, 'partner_review_required');
   assert.equal(res.body.providers.find((provider) => provider.id === 'nike-run-club').status, 'no_public_api');
+});
+
+test('apple health ingest rejects unauthorized requests', async () => {
+  withEnv({ APPLE_HEALTH_INGEST_TOKEN: 'apple-secret' });
+  const { default: handler } = await importFresh('../api/apple-health/ingest.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'unauthorized' });
+});
+
+test('apple health ingest validates signature and returns normalized summary', async () => {
+  withEnv({
+    APPLE_HEALTH_INGEST_TOKEN: 'apple-secret',
+    APPLE_HEALTH_SIGNING_SECRET: 'apple-signing-secret',
+    DISCORD_WEBHOOK_URL: undefined,
+    COACH_TARGET_PACE_SEC: '370'
+  });
+  const { default: handler } = await importFresh('../api/apple-health/ingest.js');
+
+  const body = {
+    external_run_id: 'apple_health_TEST-001',
+    user_id: 'youngkwon',
+    started_at: '2026-05-25T06:12:10Z',
+    ended_at: '2026-05-25T06:43:29Z',
+    distance_m: 5540.8,
+    moving_time_s: 1879,
+    elapsed_time_s: 1890,
+    elevation_gain_m: 36.1,
+    avg_hr: 165.1,
+    max_hr: 185,
+    cadence_avg: 174,
+    calories: 432,
+    device_source: 'Apple Watch Ultra',
+    source_app: 'Apple Health',
+    splits: [
+      { km: 1, moving_time_s: 351, avg_hr: 153.2 },
+      { km: 2, moving_time_s: 338, avg_hr: 162.1 }
+    ]
+  };
+  const rawBody = JSON.stringify(body);
+  const signature = createHmac('sha256', 'apple-signing-secret').update(rawBody).digest('hex');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer apple-secret',
+      'x-signature': signature
+    },
+    rawBody,
+    query: {},
+    body
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.id, 'apple_health_TEST-001');
+  assert.equal(res.body.source, 'apple-health');
+  assert.equal(res.body.summary.distanceKm, 5.54);
+  assert.equal(res.body.summary.pace, '5:39/km');
+  assert.equal(res.body.accepted.splitCount, 2);
+  assert.equal(res.body.accepted.routePointCount, 0);
+  assert.equal(res.body.postedToDiscord, false);
+  assert.match(res.body.coaching, /코칭:/);
+});
+
+test('apple health ingest rejects invalid signature', async () => {
+  withEnv({
+    APPLE_HEALTH_INGEST_TOKEN: 'apple-secret',
+    APPLE_HEALTH_SIGNING_SECRET: 'apple-signing-secret'
+  });
+  const { default: handler } = await importFresh('../api/apple-health/ingest.js');
+
+  const body = {
+    external_run_id: 'apple_health_BADSIG',
+    started_at: '2026-05-25T06:12:10Z',
+    ended_at: '2026-05-25T06:43:29Z',
+    distance_m: 5540.8,
+    moving_time_s: 1879
+  };
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer apple-secret',
+      'x-signature': 'bad-signature'
+    },
+    rawBody: JSON.stringify(body),
+    query: {},
+    body
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'invalid signature' });
 });
 
 test('strava connect redirects to OAuth and sets state cookie', async () => {

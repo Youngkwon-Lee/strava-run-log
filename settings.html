@@ -300,6 +300,7 @@
       function providerStatusText(status) {
         const labels = {
           live: '바로 연결 가능',
+          bridge_backend_ready: '브리지 준비 완료',
           mobile_app_required: 'iOS 앱 필요',
           partner_review_required: '파트너 승인 필요',
           no_public_api: '공개 API 없음'
@@ -316,6 +317,7 @@
               <span class="muted">${provider.method}</span>
               <p>${provider.summary}</p>
               <p class="muted">${provider.caveat}</p>
+              ${provider.apiUrl ? `<p class="muted"><code>${provider.apiUrl}</code></p>` : ''}
               <div class="row">
                 ${
                   provider.actionUrl
