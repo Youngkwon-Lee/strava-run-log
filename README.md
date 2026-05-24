@@ -152,6 +152,8 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 사용자별 토큰은 서버 DB 없이 암호화된 HttpOnly 쿠키에 저장됩니다. 운영 환경에는 쿠키 암호화를 위해 `STRAVA_SESSION_SECRET`을 추가로 설정하는 것을 권장합니다. 값이 없으면 `STRAVA_CLIENT_SECRET`을 사용합니다.
 
+공개 API는 기본적으로 사용자 OAuth 세션이 없으면 `401`을 반환합니다. 기존처럼 서버 환경변수의 단일 Strava 계정을 fallback으로 쓰고 싶을 때만 `STRAVA_ALLOW_SERVER_FALLBACK=true`를 설정하세요.
+
 Strava API 앱 설정의 Callback Domain에는 배포 도메인을 등록해야 합니다.
 
 ```text

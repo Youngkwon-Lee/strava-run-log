@@ -131,6 +131,6 @@ export default async function handler(req, res) {
       activities: sorted
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(e.statusCode || 500).json({ error: e.message });
   }
 }

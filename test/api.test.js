@@ -511,10 +511,30 @@ test('strava callback stores a user OAuth session cookie', async () => {
   assert.equal(meRes.body.session.accessToken, undefined);
 });
 
+test('strava activities requires user OAuth session by default', async () => {
+  withEnv({
+    STRAVA_ACCESS_TOKEN: 'access-token',
+    STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
+    STRAVA_ALLOW_SERVER_FALLBACK: undefined
+  });
+  const { default: handler } = await importFresh('../api/strava/activities.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'Strava account is not connected' });
+});
+
 test('strava activities endpoint returns rich run details and optional streams', async () => {
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
-    STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600
+    STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
+    STRAVA_ALLOW_SERVER_FALLBACK: 'true'
   });
   const { default: handler } = await importFresh('../api/strava/activities.js');
 
@@ -589,6 +609,7 @@ test('weekly report summarizes recent Strava runs', async () => {
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
     STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
+    STRAVA_ALLOW_SERVER_FALLBACK: 'true',
     DISCORD_WEBHOOK_URL: undefined
   });
   const { default: handler } = await importFresh('../api/strava/weekly-report.js');

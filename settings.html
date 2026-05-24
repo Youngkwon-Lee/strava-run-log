@@ -299,7 +299,9 @@
         renderRecords([]);
       });
 
-      loadMe().then(loadRecords);
+      loadMe().then((me) => {
+        if (me.connected) loadRecords();
+      });
     </script>
   </body>
 </html>
