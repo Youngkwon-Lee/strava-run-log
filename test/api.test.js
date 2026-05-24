@@ -11,9 +11,22 @@ afterEach(() => {
 function createMockResponse() {
   return {
     statusCode: 200,
+    headers: {},
+    ended: false,
     body: undefined,
     status(code) {
       this.statusCode = code;
+      return this;
+    },
+    setHeader(name, value) {
+      this.headers[name.toLowerCase()] = value;
+      return this;
+    },
+    getHeader(name) {
+      return this.headers[name.toLowerCase()];
+    },
+    end() {
+      this.ended = true;
       return this;
     },
     json(value) {
@@ -53,6 +66,14 @@ function withEnv(values) {
 
 async function importFresh(path) {
   return import(`${path}?t=${Date.now()}-${Math.random()}`);
+}
+
+function cookieHeaderFromSetCookie(setCookie) {
+  return [setCookie]
+    .flat()
+    .filter(Boolean)
+    .map((cookie) => String(cookie).split(';')[0])
+    .join('; ');
 }
 
 test('live metrics rejects unsupported methods', async () => {
@@ -399,6 +420,95 @@ test('webhook fetches activity details for activity create events', async () => 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { ok: true });
   assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('strava connect redirects to OAuth and sets state cookie', async () => {
+  withEnv({
+    STRAVA_CLIENT_ID: '12345',
+    STRAVA_CLIENT_SECRET: 'client-secret',
+    STRAVA_SESSION_SECRET: 'session-secret'
+  });
+  const { default: handler } = await importFresh('../api/strava/connect.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { host: 'example.test', 'x-forwarded-proto': 'https' },
+    query: { return_to: '/settings.html' },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.location, /^https:\/\/www\.strava\.com\/oauth\/authorize\?/);
+  assert.match(res.headers.location, /client_id=12345/);
+  assert.match(res.headers.location, /scope=read%2Cactivity%3Aread%2Cactivity%3Aread_all/);
+  assert.match(String(res.headers['set-cookie']), /strava_run_log_oauth_state=/);
+});
+
+test('strava callback stores a user OAuth session cookie', async () => {
+  withEnv({
+    STRAVA_CLIENT_ID: '12345',
+    STRAVA_CLIENT_SECRET: 'client-secret',
+    STRAVA_SESSION_SECRET: 'session-secret'
+  });
+  const { default: connectHandler } = await importFresh('../api/strava/connect.js');
+  const connectRes = await callHandler(connectHandler, {
+    method: 'GET',
+    headers: { host: 'example.test', 'x-forwarded-proto': 'https' },
+    query: { return_to: '/settings.html' },
+    body: {}
+  });
+  const state = new URL(connectRes.headers.location).searchParams.get('state');
+
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(String(url), 'https://www.strava.com/oauth/token');
+    const body = String(options.body);
+    assert.match(body, /grant_type=authorization_code/);
+    assert.match(body, /code=oauth-code/);
+    return Response.json({
+      access_token: 'user-access',
+      refresh_token: 'user-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      scope: 'read,activity:read,activity:read_all',
+      athlete: {
+        id: 777,
+        username: 'runner',
+        firstname: 'Test',
+        lastname: 'Runner',
+        profile_medium: 'https://example.test/profile.jpg'
+      }
+    });
+  });
+
+  const { default: callbackHandler } = await importFresh('../api/strava/callback.js');
+  const callbackRes = await callHandler(callbackHandler, {
+    method: 'GET',
+    headers: {
+      host: 'example.test',
+      'x-forwarded-proto': 'https',
+      cookie: cookieHeaderFromSetCookie(connectRes.headers['set-cookie'])
+    },
+    query: { code: 'oauth-code', state },
+    body: {}
+  });
+
+  assert.equal(callbackRes.statusCode, 302);
+  assert.equal(callbackRes.headers.location, '/settings.html?strava=connected');
+  assert.match(String(callbackRes.headers['set-cookie']), /strava_run_log_session=/);
+  assert.equal(fetchMock.mock.callCount(), 1);
+
+  const { default: meHandler } = await importFresh('../api/strava/me.js');
+  const meRes = await callHandler(meHandler, {
+    method: 'GET',
+    headers: { cookie: cookieHeaderFromSetCookie(callbackRes.headers['set-cookie']) },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(meRes.statusCode, 200);
+  assert.equal(meRes.body.connected, true);
+  assert.equal(meRes.body.session.athlete.id, 777);
+  assert.equal(meRes.body.session.hasActivityReadAll, true);
+  assert.equal(meRes.body.session.accessToken, undefined);
 });
 
 test('strava activities endpoint returns rich run details and optional streams', async () => {

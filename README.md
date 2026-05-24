@@ -140,6 +140,26 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 ## Strava data endpoints
 
+### User OAuth flow
+
+배포된 서비스에서 사용자는 `/settings.html`에서 Strava를 직접 연결할 수 있습니다.
+
+- `GET /settings.html`: 연결 설정 페이지
+- `GET /api/strava/connect`: Strava OAuth 승인 시작
+- `GET /api/strava/callback`: Strava 승인 후 토큰 교환
+- `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
+- `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
+
+사용자별 토큰은 서버 DB 없이 암호화된 HttpOnly 쿠키에 저장됩니다. 운영 환경에는 쿠키 암호화를 위해 `STRAVA_SESSION_SECRET`을 추가로 설정하는 것을 권장합니다. 값이 없으면 `STRAVA_CLIENT_SECRET`을 사용합니다.
+
+Strava API 앱 설정의 Callback Domain에는 배포 도메인을 등록해야 합니다.
+
+```text
+strava-run-log.vercel.app
+```
+
+주의: 새 Strava 앱은 기본적으로 Athlete Capacity 1(Single Player Mode)입니다. 실제 여러 사용자에게 공개하려면 Strava Developer Program review를 통과해서 capacity를 늘려야 합니다.
+
 ### `GET /api/strava/activities`
 
 최근 Strava 활동을 러닝 중심으로 정리해서 가져옵니다.

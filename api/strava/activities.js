@@ -2,10 +2,10 @@ import {
   filterMinimumDistance,
   getActivityDetail,
   getActivityStreams,
+  getAccessTokenForRequest,
   isRunActivity,
   listAthleteActivities,
   normalizeActivity,
-  refreshTokenIfNeeded,
   sortActivitiesNewestFirst,
   summarizeActivities
 } from '../../lib/strava.js';
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
       : parseNumber(query.min_distance_km, { min: 0, max: 5, fallback: 0.05 });
     const window = getWindow(query);
 
-    const token = await refreshTokenIfNeeded();
+    const { token, authMode } = await getAccessTokenForRequest(req, res);
     const activities = await listAthleteActivities(token, {
       after: window.after,
       before: window.before,
@@ -112,6 +112,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       source: 'strava',
+      authMode,
       note: '비공개/Only You 활동까지 가져오려면 Strava OAuth scope에 activity:read_all이 필요합니다.',
       query: {
         ...window,

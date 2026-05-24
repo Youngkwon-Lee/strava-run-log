@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Strava 연결 설정</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f7f4ed;
+        color: #17201b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(760px, 100%);
+        display: grid;
+        gap: 16px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 0;
+        color: #4b5650;
+        line-height: 1.6;
+      }
+
+      section {
+        border: 1px solid #d7d0c3;
+        background: #fffaf1;
+        border-radius: 8px;
+        padding: 20px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .status {
+        min-height: 52px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .badge {
+        width: fit-content;
+        border-radius: 999px;
+        padding: 4px 10px;
+        border: 1px solid #cfc5b4;
+        font-size: 13px;
+        color: #36433b;
+      }
+
+      .badge.connected {
+        border-color: #2f7d4f;
+        color: #1c6b3e;
+      }
+
+      button,
+      a.button {
+        appearance: none;
+        border: 1px solid #1f2a24;
+        border-radius: 8px;
+        background: #17201b;
+        color: #fff;
+        min-height: 44px;
+        padding: 0 14px;
+        font: inherit;
+        font-weight: 650;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button.secondary,
+      a.secondary {
+        background: transparent;
+        color: inherit;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: progress;
+      }
+
+      .records {
+        display: grid;
+        gap: 10px;
+      }
+
+      .record {
+        display: grid;
+        gap: 4px;
+        border-top: 1px solid #e5ddcf;
+        padding-top: 10px;
+      }
+
+      .record strong {
+        font-size: 16px;
+      }
+
+      .muted {
+        color: #667169;
+        font-size: 14px;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 14px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #111614;
+          color: #edf2ee;
+        }
+
+        p,
+        .muted {
+          color: #aeb8b1;
+        }
+
+        section {
+          background: #19201d;
+          border-color: #2f3833;
+        }
+
+        .badge {
+          border-color: #48534d;
+          color: #cdd7d1;
+        }
+
+        .badge.connected {
+          border-color: #5eba82;
+          color: #88d8a5;
+        }
+
+        button,
+        a.button {
+          border-color: #edf2ee;
+          background: #edf2ee;
+          color: #101512;
+        }
+
+        button.secondary,
+        a.secondary {
+          background: transparent;
+          color: #edf2ee;
+        }
+
+        .record {
+          border-top-color: #2f3833;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Strava 연결 설정</h1>
+          <p>Strava를 승인하면 이 브라우저에서 내 러닝 기록을 바로 불러옵니다.</p>
+        </div>
+        <a class="secondary button" href="/">홈</a>
+      </header>
+
+      <section>
+        <div class="status" id="status">
+          <span class="badge">확인 중</span>
+          <p>연결 상태를 불러오고 있습니다.</p>
+        </div>
+        <div class="row">
+          <a class="button" href="/api/strava/connect?return_to=/settings.html">Strava 연결</a>
+          <button class="secondary" id="disconnect" type="button">연결 해제</button>
+          <button class="secondary" id="refresh" type="button">기록 새로고침</button>
+        </div>
+      </section>
+
+      <section>
+        <div>
+          <h2 style="margin: 0 0 6px; font-size: 20px;">최근 러닝</h2>
+          <p>50m 미만 테스트 기록은 기본으로 제외합니다.</p>
+        </div>
+        <div class="records" id="records">
+          <p class="muted">연결 후 최근 기록이 여기에 표시됩니다.</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const statusEl = document.querySelector('#status');
+      const recordsEl = document.querySelector('#records');
+      const refreshButton = document.querySelector('#refresh');
+      const disconnectButton = document.querySelector('#disconnect');
+
+      function formatDate(value) {
+        if (!value) return '-';
+        return new Intl.DateTimeFormat('ko-KR', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(new Date(value));
+      }
+
+      function setStatus(me) {
+        if (!me.connected) {
+          statusEl.innerHTML = `
+            <span class="badge">미연결</span>
+            <p>아직 이 브라우저에 연결된 Strava 계정이 없습니다.</p>
+          `;
+          disconnectButton.disabled = true;
+          return;
+        }
+
+        const athlete = me.session?.athlete || {};
+        const name = [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || athlete.username || 'Strava 사용자';
+        const scope = me.session?.hasActivityReadAll ? '비공개 기록 포함' : '공개/팔로워 기록';
+        statusEl.innerHTML = `
+          <span class="badge connected">연결됨</span>
+          <p><strong>${name}</strong> 계정으로 연결되었습니다. <span class="muted">${scope}</span></p>
+        `;
+        disconnectButton.disabled = false;
+      }
+
+      function renderRecords(activities) {
+        if (!activities?.length) {
+          recordsEl.innerHTML = '<p class="muted">표시할 러닝 기록이 없습니다.</p>';
+          return;
+        }
+
+        recordsEl.innerHTML = activities
+          .map((run) => `
+            <div class="record">
+              <strong>${run.name || 'Run'}</strong>
+              <span>${formatDate(run.startDateLocal || run.startDate)} · ${run.distanceKm ?? '-'}km · ${run.movingTime || '-'} · ${run.pace || '-'}</span>
+              <span class="muted">${run.deviceName || 'Strava'}${run.averageHeartrate ? ` · HR ${Math.round(run.averageHeartrate)}` : ''}</span>
+            </div>
+          `)
+          .join('');
+      }
+
+      async function loadMe() {
+        const me = await fetch('/api/strava/me').then((r) => r.json());
+        setStatus(me);
+        return me;
+      }
+
+      async function loadRecords() {
+        refreshButton.disabled = true;
+        recordsEl.innerHTML = '<p class="muted">최근 기록을 불러오고 있습니다.</p>';
+        try {
+          const data = await fetch('/api/strava/activities?days=90&limit=5&details=false').then((r) => r.json());
+          if (!data.ok) throw new Error(data.error || 'records failed');
+          renderRecords(data.activities);
+        } catch (e) {
+          recordsEl.innerHTML = `<p class="muted">기록을 불러오지 못했습니다. ${e.message}</p>`;
+        } finally {
+          refreshButton.disabled = false;
+        }
+      }
+
+      refreshButton.addEventListener('click', loadRecords);
+      disconnectButton.addEventListener('click', async () => {
+        disconnectButton.disabled = true;
+        await fetch('/api/strava/disconnect', { method: 'POST' });
+        await loadMe();
+        renderRecords([]);
+      });
+
+      loadMe().then(loadRecords);
+    </script>
+  </body>
+</html>

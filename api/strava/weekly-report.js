@@ -1,9 +1,9 @@
 import {
   filterMinimumDistance,
+  getAccessTokenForRequest,
   isRunActivity,
   listAthleteActivities,
   normalizeActivity,
-  refreshTokenIfNeeded,
   sortActivitiesNewestFirst,
   summarizeActivities
 } from '../../lib/strava.js';
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 
-    const token = await refreshTokenIfNeeded();
+    const { token, authMode } = await getAccessTokenForRequest(req, res);
     const after = Math.floor(startOfWindow(7).getTime() / 1000);
 
     const activities = await listAthleteActivities(token, {
@@ -75,6 +75,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       source: 'strava',
+      authMode,
       window: {
         days: 7,
         after,
