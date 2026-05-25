@@ -3,257 +3,115 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>러닝 앱 연동 설정</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f7f4ed;
-        color: #17201b;
+    <title>연동 설정 · Meta-Learning Coach</title>
+    <meta name="description" content="러닝 디바이스 및 플랫폼(Strava, Apple Health, Garmin 등) 연동 설정">
+    
+    <!-- Link to global style sheet -->
+    <link rel="stylesheet" href="/index.css">
+    
+    <!-- Inline script to prevent FOUC for Dark Mode (Modern Web Guidance) -->
+    <script>
+      {
+        const colorScheme = localStorage.getItem("color-scheme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", colorScheme);
       }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 24px;
-      }
-
-      main {
-        width: min(760px, 100%);
-        display: grid;
-        gap: 16px;
-      }
-
-      header {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: center;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 28px;
-        line-height: 1.15;
-      }
-
-      p {
-        margin: 0;
-        color: #4b5650;
-        line-height: 1.6;
-      }
-
-      section {
-        border: 1px solid #d7d0c3;
-        background: #fffaf1;
-        border-radius: 8px;
-        padding: 20px;
-        display: grid;
-        gap: 16px;
-      }
-
-      .row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .status {
-        min-height: 52px;
-        display: grid;
-        gap: 4px;
-      }
-
-      .badge {
-        width: fit-content;
-        border-radius: 999px;
-        padding: 4px 10px;
-        border: 1px solid #cfc5b4;
-        font-size: 13px;
-        color: #36433b;
-      }
-
-      .badge.connected {
-        border-color: #2f7d4f;
-        color: #1c6b3e;
-      }
-
-      button,
-      a.button {
-        appearance: none;
-        border: 1px solid #1f2a24;
-        border-radius: 8px;
-        background: #17201b;
-        color: #fff;
-        min-height: 44px;
-        padding: 0 14px;
-        font: inherit;
-        font-weight: 650;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        text-decoration: none;
-        cursor: pointer;
-      }
-
-      button.secondary,
-      a.secondary {
-        background: transparent;
-        color: inherit;
-      }
-
-      button:disabled {
-        opacity: 0.55;
-        cursor: progress;
-      }
-
-      .records {
-        display: grid;
-        gap: 10px;
-      }
-
-      .providers {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 12px;
-      }
-
-      .provider,
-      .record {
-        display: grid;
-        gap: 4px;
-        border-top: 1px solid #e5ddcf;
-        padding-top: 10px;
-      }
-
-      .provider:first-child,
-      .record:first-child {
-        border-top: 0;
-        padding-top: 0;
-      }
-
-      .provider strong,
-      .record strong {
-        font-size: 16px;
-      }
-
-      .muted {
-        color: #667169;
-        font-size: 14px;
-      }
-
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 14px;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        :root {
-          background: #111614;
-          color: #edf2ee;
-        }
-
-        p,
-        .muted {
-          color: #aeb8b1;
-        }
-
-        section {
-          background: #19201d;
-          border-color: #2f3833;
-        }
-
-        .badge {
-          border-color: #48534d;
-          color: #cdd7d1;
-        }
-
-        .badge.connected {
-          border-color: #5eba82;
-          color: #88d8a5;
-        }
-
-        button,
-        a.button {
-          border-color: #edf2ee;
-          background: #edf2ee;
-          color: #101512;
-        }
-
-        button.secondary,
-        a.secondary {
-          background: transparent;
-          color: #edf2ee;
-        }
-
-        .provider,
-        .record {
-          border-top-color: #2f3833;
-        }
-      }
-    </style>
+    </script>
   </head>
   <body>
-    <main>
-      <header>
-        <div>
-          <h1>러닝 앱 연동 설정</h1>
-          <p>Strava는 바로 연결하고, Apple Health/Garmin/Nike는 가능한 연동 방식을 확인합니다.</p>
+    <!-- Top Header -->
+    <header>
+      <div class="nav-container">
+        <div class="brand-section">
+          <div class="brand-logo">🏃</div>
+          <div class="brand-info">
+            <h1>Meta-Learning Coach</h1>
+            <p>서비스 연동 설정</p>
+          </div>
         </div>
-        <a class="secondary button" href="/">홈</a>
-      </header>
+        <div class="nav-actions">
+          <a href="/" class="btn btn-secondary" style="padding: 8px 14px; font-size: 0.85rem;">대시보드 홈</a>
+          <button class="theme-toggle-btn" id="theme-toggle" aria-label="화면 테마 변경" type="button">
+            <svg id="theme-icon" viewBox="0 0 24 24">
+              <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41l-1.06-1.06zm1.06-12.37c-.39-.39-1.02-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.38.39-1.02 0-1.41zm-12.37 12.37c-.39-.39-1.02-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.38.39-1.02 0-1.41z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
 
-      <section>
-        <div class="status" id="status">
-          <span class="badge">확인 중</span>
-          <p>연결 상태를 불러오고 있습니다.</p>
+    <main class="container">
+      <div class="grid" style="gap: 32px;">
+        
+        <!-- SECTION 1: Active Connection Status -->
+        <div class="card">
+          <div class="card-title-bar">
+            <h2>플랫폼 연결 상태</h2>
+            <span class="badge primary">Strava OAuth 2.0</span>
+          </div>
+          <div class="grid grid-cols-2" style="align-items: center; gap: 20px;">
+            <div id="status" class="flex flex-col gap-sm">
+              <span class="badge" style="width: fit-content;">확인 중</span>
+              <p>연결 상태를 조회하고 있습니다...</p>
+            </div>
+            <div class="flex gap-md" style="flex-wrap: wrap; justify-content: flex-end;">
+              <a class="btn btn-primary" href="/api/strava/connect?return_to=/settings.html">Strava 연결</a>
+              <button class="btn btn-secondary" id="disconnect" type="button">연결 해제</button>
+              <button class="btn btn-secondary" id="refresh" type="button">기록 새로고침</button>
+            </div>
+          </div>
         </div>
-        <div class="row">
-          <a class="button" href="/api/strava/connect?return_to=/settings.html">Strava 연결</a>
-          <button class="secondary" id="disconnect" type="button">연결 해제</button>
-          <button class="secondary" id="refresh" type="button">기록 새로고침</button>
-        </div>
-      </section>
 
-      <section>
-        <div>
-          <h2 style="margin: 0 0 6px; font-size: 20px;">연동 가능한 서비스</h2>
-          <p>서비스마다 공식 API 방식이 달라서 실제 연결 경로를 구분해 표시합니다.</p>
+        <!-- SECTION 2: Available Service Providers Grid -->
+        <div class="card">
+          <div class="card-title-bar">
+            <h2>연동 가능한 서비스</h2>
+            <span class="badge info">디바이스 호환성</span>
+          </div>
+          <p style="margin-bottom: 20px;">
+            각 플랫폼 및 장비별 공식 연동 제공 방식입니다. 연결 형태에 맞추어 연동 설정을 완료해주세요.
+          </p>
+          <div class="providers-grid" id="providers">
+            <!-- Dynamic list of providers -->
+            <p class="text-muted">연동 정보를 불러오고 있습니다...</p>
+          </div>
         </div>
-        <div class="providers" id="providers">
-          <p class="muted">연동 정보를 불러오고 있습니다.</p>
-        </div>
-      </section>
 
-      <section>
-        <div>
-          <h2 style="margin: 0 0 6px; font-size: 20px;">최근 러닝</h2>
-          <p>50m 미만 테스트 기록은 기본으로 제외합니다.</p>
+        <!-- SECTION 3: Recent Ingested Running Records -->
+        <div class="card">
+          <div class="card-title-bar">
+            <h2>최근 러닝 내역</h2>
+            <span class="badge primary">최근 5개 기록</span>
+          </div>
+          <p style="margin-bottom: 16px;">가져온 기록 중 50m 미만의 테스트 운동 데이터는 필터링되어 보이지 않습니다.</p>
+          <div class="records-container" id="records">
+            <p class="text-muted">연결 후 최근 활동 기록이 여기에 표시됩니다.</p>
+          </div>
         </div>
-        <div class="records" id="records">
-          <p class="muted">연결 후 최근 기록이 여기에 표시됩니다.</p>
-        </div>
-      </section>
+        
+      </div>
     </main>
 
     <script>
-      const statusEl = document.querySelector('#status');
-      const recordsEl = document.querySelector('#records');
-      const providersEl = document.querySelector('#providers');
-      const refreshButton = document.querySelector('#refresh');
-      const disconnectButton = document.querySelector('#disconnect');
+      // DOM Elements
+      const themeToggleBtn = document.getElementById('theme-toggle');
+      const statusEl = document.getElementById('status');
+      const recordsEl = document.getElementById('records');
+      const providersEl = document.getElementById('providers');
+      const refreshButton = document.getElementById('refresh');
+      const disconnectButton = document.getElementById('disconnect');
+
+      // Theme toggle action
+      themeToggleBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('color-scheme', newTheme);
+      });
 
       function formatDate(value) {
         if (!value) return '-';
         return new Intl.DateTimeFormat('ko-KR', {
-          month: 'short',
+          month: 'long',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
@@ -263,8 +121,9 @@
       function setStatus(me) {
         if (!me.connected) {
           statusEl.innerHTML = `
-            <span class="badge">미연결</span>
-            <p>아직 이 브라우저에 연결된 Strava 계정이 없습니다.</p>
+            <span class="badge warning" style="width: fit-content; margin-bottom: 6px;">미연결</span>
+            <p style="font-weight: 500; font-size: 1.05rem;">아직 연결된 Strava 계정이 없습니다.</p>
+            <p class="text-muted" style="font-size: 0.85rem;">[Strava 연결] 버튼을 눌러 연동을 진행해 주세요.</p>
           `;
           disconnectButton.disabled = true;
           return;
@@ -274,24 +133,47 @@
         const name = [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || athlete.username || 'Strava 사용자';
         const scope = me.session?.hasActivityReadAll ? '비공개 기록 포함' : '공개/팔로워 기록';
         statusEl.innerHTML = `
-          <span class="badge connected">연결됨</span>
-          <p><strong>${name}</strong> 계정으로 연결되었습니다. <span class="muted">${scope}</span></p>
+          <span class="badge primary" style="width: fit-content; margin-bottom: 6px;">연결됨</span>
+          <p style="font-weight: 600; font-size: 1.05rem; color: var(--text-primary);">${name} 님 계정</p>
+          <p class="text-muted" style="font-size: 0.85rem;">가져오기 범위: ${scope}</p>
         `;
         disconnectButton.disabled = false;
       }
 
       function renderRecords(activities) {
         if (!activities?.length) {
-          recordsEl.innerHTML = '<p class="muted">표시할 러닝 기록이 없습니다.</p>';
+          recordsEl.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px 0;">가져온 러닝 기록이 없습니다.</p>';
           return;
         }
 
         recordsEl.innerHTML = activities
           .map((run) => `
-            <div class="record">
-              <strong>${run.name || 'Run'}</strong>
-              <span>${formatDate(run.startDateLocal || run.startDate)} · ${run.distanceKm ?? '-'}km · ${run.movingTime || '-'} · ${run.pace || '-'}</span>
-              <span class="muted">${run.deviceName || 'Strava'}${run.averageHeartrate ? ` · HR ${Math.round(run.averageHeartrate)}` : ''}</span>
+            <div class="record-item" style="cursor: default;">
+              <div class="record-meta">
+                <span class="badge primary">${run.deviceName || 'Strava'}</span>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">${formatDate(run.startDateLocal || run.startDate)}</span>
+              </div>
+              <h3 style="font-size: 1.05rem;">${run.name || '러닝 세션'}</h3>
+              <div class="record-stats" style="border-bottom: 0; padding-bottom: 0;">
+                <div class="record-stat-pill">
+                  <span>거리</span>
+                  <span>${run.distanceKm ?? '-'} km</span>
+                </div>
+                <div class="record-stat-pill">
+                  <span>이동 시간</span>
+                  <span>${run.movingTime || '-'}</span>
+                </div>
+                <div class="record-stat-pill">
+                  <span>페이스</span>
+                  <span>${run.pace || '-'}</span>
+                </div>
+                ${run.averageHeartrate ? `
+                  <div class="record-stat-pill">
+                    <span>평균 심박</span>
+                    <span>${Math.round(run.averageHeartrate)} bpm</span>
+                  </div>
+                ` : ''}
+              </div>
             </div>
           `)
           .join('');
@@ -299,32 +181,43 @@
 
       function providerStatusText(status) {
         const labels = {
-          live: '바로 연결 가능',
-          bridge_backend_ready: '브리지 준비 완료',
-          mobile_app_required: 'iOS 앱 필요',
-          partner_review_required: '파트너 승인 필요',
+          live: '연동 즉시 연결',
+          bridge_backend_ready: '브리지 앱 필요',
+          mobile_app_required: 'iOS HealthKit',
+          partner_review_required: '개발자 승인 필요',
           no_public_api: '공개 API 없음'
         };
         return labels[status] || status;
       }
 
+      function providerBadgeClass(status) {
+        if (status === 'live') return 'primary';
+        if (status === 'bridge_backend_ready') return 'info';
+        if (status === 'partner_review_required') return 'warning';
+        return '';
+      }
+
       function renderProviders(providers) {
         providersEl.innerHTML = providers
           .map((provider) => `
-            <div class="provider">
-              <span class="badge ${provider.status === 'live' ? 'connected' : ''}">${providerStatusText(provider.status)}</span>
-              <strong>${provider.name}</strong>
-              <span class="muted">${provider.method}</span>
-              <p>${provider.summary}</p>
-              <p class="muted">${provider.caveat}</p>
-              ${provider.apiUrl ? `<p class="muted"><code>${provider.apiUrl}</code></p>` : ''}
-              <div class="row">
+            <div class="provider-card">
+              <div class="provider-header">
+                <div class="provider-info">
+                  <span class="badge ${providerBadgeClass(provider.status)}">${providerStatusText(provider.status)}</span>
+                  <h3>${provider.name}</h3>
+                </div>
+                <span class="text-muted" style="font-size: 0.8rem; font-weight: 600;">${provider.method}</span>
+              </div>
+              <p class="provider-desc">${provider.summary}</p>
+              <p class="provider-caveat">${provider.caveat}</p>
+              ${provider.apiUrl ? `<p style="font-size: 0.8rem; margin: 4px 0;"><code style="background-color: var(--bg-color); border: 1px solid var(--border-color);">${provider.apiUrl}</code></p>` : ''}
+              <div class="flex gap-md" style="margin-top: 8px;">
                 ${
                   provider.actionUrl
-                    ? `<a class="button" href="${provider.actionUrl}">${provider.actionLabel}</a>`
-                    : `<button class="secondary" type="button" disabled>${provider.actionLabel}</button>`
+                    ? `<a class="btn btn-primary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" href="${provider.actionUrl}">${provider.actionLabel}</a>`
+                    : `<button class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" type="button" disabled>${provider.actionLabel}</button>`
                 }
-                <a class="secondary button" href="${provider.docsUrl}" target="_blank" rel="noreferrer">공식 문서</a>
+                <a class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" href="${provider.docsUrl}" target="_blank" rel="noreferrer">연동 문서</a>
               </div>
             </div>
           `)
@@ -337,7 +230,7 @@
           if (!data.ok) throw new Error(data.error || 'providers failed');
           renderProviders(data.providers);
         } catch (e) {
-          providersEl.innerHTML = `<p class="muted">연동 정보를 불러오지 못했습니다. ${e.message}</p>`;
+          providersEl.innerHTML = `<p class="text-muted">연동 정보를 불러오지 못했습니다. (${e.message})</p>`;
         }
       }
 
@@ -349,13 +242,13 @@
 
       async function loadRecords() {
         refreshButton.disabled = true;
-        recordsEl.innerHTML = '<p class="muted">최근 기록을 불러오고 있습니다.</p>';
+        recordsEl.innerHTML = '<p class="text-muted">최근 기록을 불러오고 있습니다...</p>';
         try {
           const data = await fetch('/api/strava/activities?days=90&limit=5&details=false').then((r) => r.json());
           if (!data.ok) throw new Error(data.error || 'records failed');
           renderRecords(data.activities);
         } catch (e) {
-          recordsEl.innerHTML = `<p class="muted">기록을 불러오지 못했습니다. ${e.message}</p>`;
+          recordsEl.innerHTML = `<p class="text-muted">기록을 불러오지 못했습니다. (${e.message})</p>`;
         } finally {
           refreshButton.disabled = false;
         }
@@ -363,12 +256,14 @@
 
       refreshButton.addEventListener('click', loadRecords);
       disconnectButton.addEventListener('click', async () => {
+        if (!confirm('정말로 Strava 연동을 해제하시겠습니까?')) return;
         disconnectButton.disabled = true;
         await fetch('/api/strava/disconnect', { method: 'POST' });
-        await loadMe();
+        const me = await loadMe();
         renderRecords([]);
       });
 
+      // Initialize Page
       loadProviders();
       loadMe().then((me) => {
         if (me.connected) loadRecords();
