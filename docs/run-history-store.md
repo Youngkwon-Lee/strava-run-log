@@ -19,7 +19,7 @@ Default paths:
 
 The file is JSON Lines. Each line is one normalized run record.
 
-For Supabase mode, records are stored in `public.runs` and the canonical run payload is kept in the `raw` JSONB column. Typed columns such as `source`, `external_id`, `start_date`, `distance_meters`, and `moving_time_sec` are query/index helpers.
+For Supabase mode, records are stored in `public.run_log_runs` and the canonical run payload is kept in the `raw` JSONB column. Typed columns such as `source`, `external_id`, `start_date`, `distance_meters`, and `moving_time_sec` are query/index helpers.
 
 ## Writers
 
@@ -103,18 +103,24 @@ or paste `supabase/migrations/20260622014705_create_run_store.sql` into the Supa
 
 Use `--workdir` from this repo because other Supabase projects may be linked elsewhere on the same machine.
 
+If the target Supabase project already has a separate migration history, `db push` can fail with remote migration versions not found locally. In that case, apply only this table with:
+
+```bash
+supabase db query --workdir /Users/youngkwon/Desktop/strava-run-log --linked --file supabase/migrations/20260622014705_create_run_store.sql
+```
+
 Required server-side environment variables:
 
 ```env
 RUN_STORE_BACKEND=supabase
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
-RUN_STORE_SUPABASE_TABLE=runs
+RUN_STORE_SUPABASE_TABLE=run_log_runs
 ```
 
 Security notes:
 
-- `public.runs` has RLS enabled.
+- `public.run_log_runs` has RLS enabled.
 - The app uses the service role key from server-side API routes only.
 - Do not expose `SUPABASE_SERVICE_ROLE_KEY` in client-side JavaScript or `NEXT_PUBLIC_*` variables.
 - No anon/authenticated policies are created yet, so browser clients cannot read/write this table directly.

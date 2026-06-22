@@ -37,7 +37,7 @@ test('Supabase run store reads rows through PostgREST', async () => {
   });
 
   const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
-    assert.match(String(url), /^https:\/\/project\.supabase\.co\/rest\/v1\/runs\?/);
+    assert.match(String(url), /^https:\/\/project\.supabase\.co\/rest\/v1\/run_log_runs\?/);
     assert.match(String(url), /select=/);
     assert.match(String(url), /order=start_date\.desc\.nullslast/);
     assert.equal(options.headers.apikey, 'service-role-key');
@@ -76,7 +76,7 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
     RUN_STORE_BACKEND: 'supabase',
     SUPABASE_URL: 'https://project.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
-    RUN_STORE_SUPABASE_TABLE: 'runs'
+    RUN_STORE_SUPABASE_TABLE: 'run_log_runs'
   });
 
   const calls = [];
@@ -84,7 +84,7 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
     calls.push({ url: String(url), options });
 
     if (options.method === 'POST') {
-      assert.match(String(url), /\/rest\/v1\/runs\?on_conflict=source%2Cexternal_id$/);
+      assert.match(String(url), /\/rest\/v1\/run_log_runs\?on_conflict=source%2Cexternal_id$/);
       assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
       const body = JSON.parse(options.body);
       assert.equal(body.source, 'strava');
