@@ -261,6 +261,7 @@ Apple Health ingest, Strava webhook, Strava activities 조회 결과는 공통 r
 - 로컬: `.data/runs.jsonl`
 - Vercel/serverless: `/tmp/strava-run-log/runs.jsonl`
 - 직접 지정: `RUN_STORE_PATH=/path/to/runs.jsonl`
+- Supabase/Postgres: `RUN_STORE_BACKEND=supabase`
 
 저장된 기록만 조회:
 
@@ -272,6 +273,24 @@ curl "https://<your-domain>/api/strava/weekly-report?source=stored"
 주의: `/tmp` 기반 serverless 파일 저장은 인스턴스 재시작 시 사라질 수 있습니다. 장기 운영에서는 같은 `lib/run-store.js` 경계를 Postgres/KV/S3 같은 외부 저장소 어댑터로 교체하세요.
 
 자세한 저장 계약과 한계는 [`docs/run-history-store.md`](docs/run-history-store.md)를 봅니다.
+
+#### Supabase store
+
+Supabase Free 플랜은 개인 MVP에는 충분합니다. 러닝 요약 레코드 중심으로 저장하고 GPS streams/route points 원본을 대량 저장하지 않는 것이 전제입니다.
+
+필요한 환경변수:
+
+```env
+RUN_STORE_BACKEND=supabase
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
+RUN_STORE_SUPABASE_TABLE=runs
+```
+
+주의:
+- `SUPABASE_SERVICE_ROLE_KEY`는 서버 환경변수로만 설정하고 브라우저에 노출하지 않습니다.
+- DB schema는 `supabase/migrations/20260622014705_create_run_store.sql`을 Supabase SQL editor 또는 CLI로 적용합니다.
+- `public.runs`는 RLS enabled 상태입니다. 현재 앱은 server-side service role 접근을 전제로 합니다.
 
 ### `GET /api/strava/weekly-report`
 
