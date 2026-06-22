@@ -59,6 +59,8 @@ weekly trend UI -> run_log_weekly_summaries
 Current implementation:
 
 - `lib/pghd-connections.js` resolves `provider + provider_user_id` to `pghd_connections.person_id`.
+- `GET/POST /api/pghd/connections` manages provider account mappings.
+- `/settings.html` includes a `PGHD 연결 매핑` panel for manual setup.
 - `lib/run-store.js` attempts this mapping before Supabase upsert and writes `subject_person_id` plus `pghd_connection_id` when a unique connection exists.
 - `POST /api/run-log/promote-to-activity-session` can omit `subject_person_id` when the stored run can be resolved through `pghd_connections`.
 - If the mapping is missing or ambiguous, promotion still requires explicit `subject_person_id`.

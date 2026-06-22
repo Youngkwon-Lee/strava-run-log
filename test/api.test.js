@@ -992,6 +992,104 @@ test('run-log weekly summaries reads Supabase view with filters', async () => {
   assert.equal(fetchMock.mock.callCount(), 1);
 });
 
+test('PGHD connections requires admin auth', async () => {
+  withEnv({ RUN_LOG_ADMIN_TOKEN: 'admin-secret' });
+  const { default: handler } = await importFresh('../api/pghd/connections.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'unauthorized' });
+});
+
+test('PGHD connections upserts provider mapping', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/pghd/connections.js');
+
+  const personId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.match(href, /\/rest\/v1\/pghd_connections\?on_conflict=person_id%2Cprovider$/);
+    assert.equal(options.method, 'POST');
+    assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
+    const body = JSON.parse(options.body);
+    assert.equal(body.person_id, personId);
+    assert.equal(body.provider, 'apple-health');
+    assert.equal(body.provider_user_id, 'youngkwon');
+    assert.equal(body.connection_status, 'active');
+    return Response.json([{ id: '22222222-2222-4222-8222-222222222222', ...body }]);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      person_id: personId,
+      provider: 'apple_health',
+      provider_user_id: 'youngkwon',
+      metadata: { source: 'test' }
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.connection.provider, 'apple-health');
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('PGHD connections lists provider mappings', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/pghd/connections.js');
+
+  const personId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.match(href, /\/rest\/v1\/pghd_connections\?/);
+    assert.match(href, /person_id=eq\.11111111-1111-4111-8111-111111111111/);
+    assert.match(href, /provider=eq\.strava/);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    return Response.json([
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        person_id: personId,
+        provider: 'strava',
+        provider_user_id: '12345',
+        connection_status: 'active'
+      }
+    ]);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      person_id: personId,
+      provider: 'strava'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 1);
+  assert.equal(res.body.connections[0].provider_user_id, '12345');
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
 test('strava connect redirects to OAuth and sets state cookie', async () => {
   withEnv({
     STRAVA_CLIENT_ID: '12345',

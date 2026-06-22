@@ -77,7 +77,51 @@
           </div>
         </div>
 
-        <!-- SECTION 3: Recent Ingested Running Records -->
+        <!-- SECTION 3: PGHD Connection Mapping -->
+        <div class="card">
+          <div class="card-title-bar">
+            <h2>PGHD 연결 매핑</h2>
+            <span class="badge info">client/person 연결</span>
+          </div>
+          <p style="margin-bottom: 16px;">
+            provider 계정과 physio app client/person을 연결합니다. 이 매핑이 있으면 이후 들어오는 러닝 기록이 자동으로 client에 연결됩니다.
+          </p>
+          <div class="pghd-filter-grid">
+            <div class="form-group">
+              <label for="pghd-admin-token">관리 토큰</label>
+              <input id="pghd-admin-token" type="password" placeholder="RUN_LOG_ADMIN_TOKEN 또는 LIVE_METRICS_TOKEN">
+            </div>
+            <div class="form-group">
+              <label for="pghd-person-id">client/person id</label>
+              <input id="pghd-person-id" type="text" placeholder="person_id UUID">
+            </div>
+            <div class="form-group">
+              <label for="pghd-provider">provider</label>
+              <select id="pghd-provider">
+                <option value="apple-health">Apple Health</option>
+                <option value="strava">Strava</option>
+                <option value="garmin">Garmin</option>
+                <option value="file-import">파일 업로드</option>
+                <option value="nike-run-club">Nike Run Club</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="pghd-provider-user-id">provider user id</label>
+              <input id="pghd-provider-user-id" type="text" placeholder="Apple Health user_id / Strava athlete id">
+            </div>
+          </div>
+          <div class="flex gap-md" style="margin-top: 12px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="save-pghd-connection" type="button">매핑 저장</button>
+            <button class="btn btn-secondary" id="load-pghd-connections" type="button">매핑 목록 조회</button>
+            <button class="btn btn-secondary" id="clear-pghd-token" type="button">토큰 지우기</button>
+          </div>
+          <p id="pghd-connection-status" class="text-muted" style="font-size: 0.82rem; margin-top: 10px;">저장된 provider 매핑이 여기에 표시됩니다.</p>
+          <div class="pghd-summary-grid" id="pghd-connections-list">
+            <div class="pghd-empty-state">아직 조회된 매핑이 없습니다.</div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: Recent Ingested Running Records -->
         <div class="card">
           <div class="card-title-bar">
             <h2>최근 러닝 내역</h2>
@@ -100,7 +144,19 @@
       const providersEl = document.getElementById('providers');
       const refreshButton = document.getElementById('refresh');
       const disconnectButton = document.getElementById('disconnect');
+      const pghdAdminToken = document.getElementById('pghd-admin-token');
+      const pghdPersonId = document.getElementById('pghd-person-id');
+      const pghdProvider = document.getElementById('pghd-provider');
+      const pghdProviderUserId = document.getElementById('pghd-provider-user-id');
+      const savePghdConnectionButton = document.getElementById('save-pghd-connection');
+      const loadPghdConnectionsButton = document.getElementById('load-pghd-connections');
+      const clearPghdTokenButton = document.getElementById('clear-pghd-token');
+      const pghdConnectionStatus = document.getElementById('pghd-connection-status');
+      const pghdConnectionsList = document.getElementById('pghd-connections-list');
       let providerCache = [];
+
+      pghdAdminToken.value = localStorage.getItem('RUN_LOG_ADMIN_TOKEN') || '';
+      pghdPersonId.value = localStorage.getItem('PGHD_PERSON_ID') || '';
 
       // Theme toggle action
       themeToggleBtn.addEventListener('click', () => {
@@ -330,6 +386,106 @@
         }
       }
 
+      function pghdHeaders() {
+        const token = pghdAdminToken.value.trim();
+        const headers = { 'content-type': 'application/json' };
+        if (token) headers.authorization = `Bearer ${token}`;
+        return headers;
+      }
+
+      function renderPghdConnections(connections) {
+        if (!connections?.length) {
+          pghdConnectionsList.innerHTML = '<div class="pghd-empty-state">저장된 매핑이 없습니다.</div>';
+          return;
+        }
+
+        pghdConnectionsList.innerHTML = connections.map((connection) => `
+          <div class="pghd-week-card">
+            <div class="pghd-week-header">
+              <span>${connection.provider || '-'}</span>
+              <span class="badge ${connection.connection_status === 'active' ? 'primary' : 'warning'}">${connection.connection_status || 'unknown'}</span>
+            </div>
+            <div class="pghd-week-metrics">
+              <div><span>${connection.person_id || '-'}</span><small>person</small></div>
+              <div><span>${connection.provider_user_id || '-'}</span><small>provider user</small></div>
+              <div><span>${connection.last_sync_at ? formatDate(connection.last_sync_at) : '-'}</span><small>last sync</small></div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      async function loadPghdConnections() {
+        const token = pghdAdminToken.value.trim();
+        if (!token) {
+          pghdConnectionStatus.textContent = '관리 토큰이 필요합니다.';
+          pghdConnectionStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+
+        localStorage.setItem('RUN_LOG_ADMIN_TOKEN', token);
+        const params = new URLSearchParams();
+        if (pghdPersonId.value.trim()) params.set('person_id', pghdPersonId.value.trim());
+        if (pghdProvider.value.trim()) params.set('provider', pghdProvider.value.trim());
+
+        loadPghdConnectionsButton.disabled = true;
+        pghdConnectionStatus.textContent = '매핑 목록을 불러오는 중...';
+        pghdConnectionStatus.style.color = 'var(--text-secondary)';
+        try {
+          const data = await fetch(`/api/pghd/connections?${params.toString()}`, {
+            headers: pghdHeaders()
+          }).then((r) => r.json().then((body) => ({ ok: r.ok, body })));
+          if (!data.ok || !data.body.ok) throw new Error(data.body.error || 'connections failed');
+          renderPghdConnections(data.body.connections || []);
+          pghdConnectionStatus.textContent = `${data.body.count || 0}개 매핑을 표시했습니다.`;
+          pghdConnectionStatus.style.color = 'var(--color-primary)';
+        } catch (e) {
+          pghdConnectionStatus.textContent = `매핑 조회 실패: ${e.message}`;
+          pghdConnectionStatus.style.color = 'var(--color-alert)';
+        } finally {
+          loadPghdConnectionsButton.disabled = false;
+        }
+      }
+
+      async function savePghdConnection() {
+        const token = pghdAdminToken.value.trim();
+        if (!token) {
+          pghdConnectionStatus.textContent = '관리 토큰이 필요합니다.';
+          pghdConnectionStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+
+        localStorage.setItem('RUN_LOG_ADMIN_TOKEN', token);
+        if (pghdPersonId.value.trim()) localStorage.setItem('PGHD_PERSON_ID', pghdPersonId.value.trim());
+
+        savePghdConnectionButton.disabled = true;
+        pghdConnectionStatus.textContent = '매핑을 저장하는 중...';
+        pghdConnectionStatus.style.color = 'var(--text-secondary)';
+        try {
+          const data = await fetch('/api/pghd/connections', {
+            method: 'POST',
+            headers: pghdHeaders(),
+            body: JSON.stringify({
+              person_id: pghdPersonId.value.trim(),
+              provider: pghdProvider.value.trim(),
+              provider_user_id: pghdProviderUserId.value.trim(),
+              connection_status: 'active',
+              metadata: { source: 'settings-ui' }
+            })
+          }).then((r) => r.json().then((body) => ({ ok: r.ok, body })));
+          if (!data.ok || !data.body.ok) {
+            throw new Error(data.body.details?.join(', ') || data.body.error || 'connection save failed');
+          }
+          pghdConnectionStatus.textContent = '매핑을 저장했습니다.';
+          pghdConnectionStatus.style.color = 'var(--color-primary)';
+          await loadPghdConnections();
+        } catch (e) {
+          pghdConnectionStatus.textContent = `매핑 저장 실패: ${e.message}`;
+          pghdConnectionStatus.style.color = 'var(--color-alert)';
+        } finally {
+          savePghdConnectionButton.disabled = false;
+        }
+      }
+
       async function loadMe() {
         const me = await fetch('/api/strava/me').then((r) => r.json());
         setStatus(me);
@@ -354,6 +510,14 @@
       }
 
       refreshButton.addEventListener('click', loadRecords);
+      savePghdConnectionButton.addEventListener('click', savePghdConnection);
+      loadPghdConnectionsButton.addEventListener('click', loadPghdConnections);
+      clearPghdTokenButton.addEventListener('click', () => {
+        localStorage.removeItem('RUN_LOG_ADMIN_TOKEN');
+        pghdAdminToken.value = '';
+        pghdConnectionStatus.textContent = '저장된 관리 토큰을 지웠습니다.';
+        pghdConnectionStatus.style.color = 'var(--text-secondary)';
+      });
       disconnectButton.addEventListener('click', async () => {
         if (!confirm('정말로 Strava 연동을 해제하시겠습니까?')) return;
         disconnectButton.disabled = true;
