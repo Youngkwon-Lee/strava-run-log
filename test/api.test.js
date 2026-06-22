@@ -844,6 +844,69 @@ test('run-log promotion creates an activity session and links the run', async ()
   assert.equal(calls[2].options.method, 'PATCH');
 });
 
+test('run-log weekly summaries requires admin auth', async () => {
+  withEnv({ RUN_LOG_ADMIN_TOKEN: 'admin-secret' });
+  const { default: handler } = await importFresh('../api/run-log/weekly-summaries.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'unauthorized' });
+});
+
+test('run-log weekly summaries reads Supabase view with filters', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/weekly-summaries.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.match(href, /\/rest\/v1\/run_log_weekly_summaries\?/);
+    assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+    assert.match(href, /source=eq\.apple-health/);
+    assert.match(href, /limit=12/);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+    return Response.json([
+      {
+        week_start: '2026-06-15',
+        subject_person_id: subjectPersonId,
+        source: 'apple-health',
+        run_count: 3,
+        total_km: 18.2,
+        moderate_minutes: 105,
+        average_pace_sec_per_km: 346
+      }
+    ]);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health',
+      limit: '12'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 1);
+  assert.equal(res.body.summaries[0].total_km, 18.2);
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
 test('strava connect redirects to OAuth and sets state cookie', async () => {
   withEnv({
     STRAVA_CLIENT_ID: '12345',

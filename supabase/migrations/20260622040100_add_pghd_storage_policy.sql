@@ -4,6 +4,15 @@ alter table public.run_log_runs
   add column if not exists telemetry_ref jsonb,
   add column if not exists raw_retention_until timestamptz;
 
+do $$
+begin
+  if to_regprocedure('public.set_run_log_runs_updated_at()') is not null then
+    alter function public.set_run_log_runs_updated_at()
+      set search_path = public, pg_temp;
+  end if;
+end;
+$$;
+
 comment on column public.run_log_runs.data_classification is
   'Data classification for provider-originated records. Default is PGHD.';
 
@@ -39,7 +48,8 @@ create index if not exists run_log_runs_raw_retention_until_idx
   on public.run_log_runs (raw_retention_until)
   where raw_retention_until is not null;
 
-create or replace view public.run_log_weekly_summaries as
+create or replace view public.run_log_weekly_summaries
+with (security_invoker = true) as
 select
   date_trunc('week', start_date)::date as week_start,
   subject_person_id,

@@ -164,6 +164,7 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 - `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
 - `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
 - `POST /api/run-log/promote-to-activity-session`: 저장된 러닝을 Kinnero `activity_sessions`로 연결
+- `GET /api/run-log/weekly-summaries`: Supabase weekly PGHD summary view 조회
 - `POST /api/import/run-file`: GPX/TCX 파일을 저장된 러닝으로 import
 
 서비스별 현재 전략:
@@ -365,6 +366,31 @@ RUN_STORE_SUPABASE_TABLE=run_log_runs
 - `org_client_profile_id`
 - `created_by`
 - `notes`
+
+### `GET /api/run-log/weekly-summaries`
+
+Supabase `run_log_weekly_summaries` view를 읽어 client/person별 주간 추세를 반환합니다.
+
+인증:
+- `Authorization: Bearer <RUN_LOG_ADMIN_TOKEN>`
+- `RUN_LOG_ADMIN_TOKEN`이 없으면 `LIVE_METRICS_TOKEN` 사용
+- 또는 `x-run-log-token`
+
+예시:
+
+```bash
+curl "https://<your-domain>/api/run-log/weekly-summaries?subject_person_id=<uuid>&source=apple-health&limit=12" \
+  -H "authorization: Bearer $RUN_LOG_ADMIN_TOKEN"
+```
+
+필터:
+- `subject_person_id`
+- `organization_id`
+- `org_client_profile_id`
+- `user_id`
+- `source`
+- `after`, `before` (`YYYY-MM-DD`)
+- `limit` (default `52`, max `260`)
 
 ## Vercel webhook 배포 (실시간 감지)
 
