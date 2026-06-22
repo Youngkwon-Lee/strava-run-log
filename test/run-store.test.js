@@ -96,6 +96,10 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
   const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
     calls.push({ url: String(url), options });
 
+    if (String(url).includes('/rest/v1/pghd_connections?')) {
+      return Response.json([]);
+    }
+
     if (options.method === 'POST') {
       assert.match(String(url), /\/rest\/v1\/run_log_runs\?on_conflict=source%2Cexternal_id$/);
       assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
@@ -141,6 +145,63 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(result.run.source, 'strava');
   assert.equal(result.count, 1);
+});
+
+test('Supabase run store resolves PGHD connection before upsert', async () => {
+  setEnv({
+    RUN_STORE_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const connectionId = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    const href = String(url);
+
+    if (href.includes('/rest/v1/pghd_connections?')) {
+      assert.match(href, /provider=in\.%28apple-health%2Capple_health%29/);
+      assert.match(href, /provider_user_id=in\.%28youngkwon%29/);
+      return Response.json([
+        {
+          id: connectionId,
+          person_id: subjectPersonId,
+          provider: 'apple-health',
+          provider_user_id: 'youngkwon',
+          connection_status: 'active'
+        }
+      ]);
+    }
+
+    if (options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      assert.equal(body.pghd_connection_id, connectionId);
+      assert.equal(body.raw.connectionResolution.connectionResolved, true);
+      return Response.json([{ ...body, created_at: '2026-06-20T06:00:00Z' }]);
+    }
+
+    return Response.json([]);
+  });
+
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+  const result = await upsertStoredRun(
+    {
+      id: 'apple-001',
+      source: 'apple-health',
+      userId: 'youngkwon',
+      startDate: '2026-06-20T06:00:00Z',
+      distanceMeters: 5000,
+      movingTimeSec: 1800
+    },
+    { skipCount: true }
+  );
+
+  assert.equal(result.run.subjectPersonId, subjectPersonId);
+  assert.equal(result.run.pghdConnectionId, connectionId);
+  assert.equal(calls.length, 2);
 });
 
 test('run store prunes dense telemetry from raw payloads', async () => {

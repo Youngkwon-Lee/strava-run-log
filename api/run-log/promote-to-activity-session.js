@@ -1,3 +1,4 @@
+import { resolvePghdConnectionForRun } from '../../lib/pghd-connections.js';
 import { supabaseFetch } from '../../lib/supabase-rest.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,7 +63,7 @@ function validatePayload(body) {
 
   const source = collect(parseText(body, 'source', { maxLength: 80 }));
   const externalId = collect(parseText(body, 'external_id', { maxLength: 180 }));
-  const subjectPersonId = collect(parseUuid(body, 'subject_person_id', { required: true }));
+  const subjectPersonId = collect(parseUuid(body, 'subject_person_id'));
   const organizationId = collect(parseUuid(body, 'organization_id'));
   const orgClientProfileId = collect(parseUuid(body, 'org_client_profile_id'));
   const createdBy = collect(parseUuid(body, 'created_by'));
@@ -140,6 +141,28 @@ async function updateRunLink(source, externalId, patch) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
+async function resolveSubjectPersonId(parsed, run) {
+  if (parsed.subjectPersonId) return parsed.subjectPersonId;
+  if (run.subject_person_id) return run.subject_person_id;
+  if (run.raw?.subjectPersonId) return run.raw.subjectPersonId;
+
+  const resolved = await resolvePghdConnectionForRun({
+    source: parsed.source,
+    provider: parsed.source,
+    externalId: parsed.externalId,
+    userId: run.user_id || run.raw?.userId,
+    providerUserId: run.raw?.providerUserId || run.raw?.userId,
+    raw: run.raw
+  });
+
+  if (resolved.connectionResolved) return resolved.subjectPersonId;
+
+  const reason = resolved.reason ? ` (${resolved.reason})` : '';
+  throw Object.assign(new Error(`subject_person_id is required when no PGHD connection mapping exists${reason}`), {
+    statusCode: 400
+  });
+}
+
 async function createActivitySession(run, payload) {
   const body = compactObject({
     subject_person_id: payload.subjectPersonId,
@@ -180,6 +203,7 @@ export default async function handler(req, res) {
 
     const run = await findRun(parsed.source, parsed.externalId);
     if (!run) return res.status(404).json({ error: 'run not found' });
+    const subjectPersonId = await resolveSubjectPersonId(parsed, run);
 
     if (run.activity_session_id) {
       return res.status(200).json({
@@ -188,16 +212,17 @@ export default async function handler(req, res) {
         activitySessionId: run.activity_session_id,
         run: {
           source: run.source,
-          externalId: run.external_id
+          externalId: run.external_id,
+          subjectPersonId
         }
       });
     }
 
-    const session = await createActivitySession(run, parsed);
+    const session = await createActivitySession(run, { ...parsed, subjectPersonId });
     if (!session?.id) throw new Error('activity session insert did not return an id');
 
     const updated = await updateRunLink(parsed.source, parsed.externalId, {
-      subject_person_id: parsed.subjectPersonId,
+      subject_person_id: subjectPersonId,
       organization_id: parsed.organizationId,
       org_client_profile_id: parsed.orgClientProfileId,
       activity_session_id: session.id,
@@ -211,10 +236,10 @@ export default async function handler(req, res) {
       run: {
         source: updated?.source || run.source,
         externalId: updated?.external_id || run.external_id,
-        subjectPersonId: updated?.subject_person_id || parsed.subjectPersonId
+        subjectPersonId: updated?.subject_person_id || subjectPersonId
       }
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(e.statusCode || 500).json({ error: e.message });
   }
 }

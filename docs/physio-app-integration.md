@@ -62,6 +62,7 @@ Suggested flow for turning a stored run into a physio app activity:
 1. Read a `run_log_runs` row.
 2. Resolve the app person:
    - `user_id` or provider account -> `subject_person_id`
+   - current implementation first tries `pghd_connections(provider, provider_user_id)`
 3. Insert `activity_sessions`:
    - `subject_person_id`
    - `activity_type = 'run'`
@@ -94,7 +95,7 @@ Body:
 }
 ```
 
-Only `source`, `external_id`, and `subject_person_id` are required. The endpoint is idempotent for already-linked runs: if `activity_session_id` exists, it returns the existing id instead of creating a duplicate session.
+Only `source` and `external_id` are always required. `subject_person_id` is required only when the run cannot be resolved through `pghd_connections`. The endpoint is idempotent for already-linked runs: if `activity_session_id` exists, it returns the existing id instead of creating a duplicate session.
 
 ## Data Volume Guidance
 

@@ -844,6 +844,91 @@ test('run-log promotion creates an activity session and links the run', async ()
   assert.equal(calls[2].options.method, 'PATCH');
 });
 
+test('run-log promotion resolves subject person from PGHD connection', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/promote-to-activity-session.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const activitySessionId = '22222222-2222-4222-8222-222222222222';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+
+    if (href.includes('/rest/v1/run_log_runs?') && !options.method) {
+      return Response.json([
+        {
+          source: 'apple-health',
+          external_id: 'apple-001',
+          user_id: 'youngkwon',
+          name: 'Morning Run',
+          start_date: '2026-06-22T01:00:00Z',
+          distance_meters: 4020,
+          moving_time_sec: 1510,
+          raw: {
+            userId: 'youngkwon',
+            distanceKm: 4.02
+          }
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/pghd_connections?')) {
+      assert.match(href, /provider=in\.%28apple-health%2Capple_health%29/);
+      assert.match(href, /provider_user_id=in\.%28youngkwon%29/);
+      return Response.json([
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          person_id: subjectPersonId,
+          provider: 'apple-health',
+          provider_user_id: 'youngkwon',
+          connection_status: 'active'
+        }
+      ]);
+    }
+
+    if (href.endsWith('/rest/v1/activity_sessions') && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      return Response.json([{ id: activitySessionId }]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?') && options.method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      assert.equal(body.activity_session_id, activitySessionId);
+      return Response.json([
+        {
+          source: 'apple-health',
+          external_id: 'apple-001',
+          subject_person_id: subjectPersonId,
+          activity_session_id: activitySessionId
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      source: 'apple-health',
+      external_id: 'apple-001'
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.activitySessionId, activitySessionId);
+  assert.equal(res.body.run.subjectPersonId, subjectPersonId);
+  assert.equal(fetchMock.mock.callCount(), 4);
+});
+
 test('run-log weekly summaries requires admin auth', async () => {
   withEnv({ RUN_LOG_ADMIN_TOKEN: 'admin-secret' });
   const { default: handler } = await importFresh('../api/run-log/weekly-summaries.js');
