@@ -68,7 +68,8 @@
             <span class="badge info">디바이스 호환성</span>
           </div>
           <p style="margin-bottom: 20px;">
-            각 플랫폼 및 장비별 공식 연동 제공 방식입니다. 연결 형태에 맞추어 연동 설정을 완료해주세요.
+            Apple 건강 앱, Strava, Garmin, Apple Watch LiveRun, 파일 업로드를 각각 별도 버튼으로 관리합니다.
+            현재 즉시 OAuth 연결 가능한 경로는 Strava이며, 나머지는 모바일/Watch 브리지 또는 파트너 승인 단계에 맞추어 활성화됩니다.
           </p>
           <div class="providers-grid" id="providers">
             <!-- Dynamic list of providers -->
@@ -184,6 +185,8 @@
           live: '연동 즉시 연결',
           bridge_backend_ready: '브리지 앱 필요',
           mobile_app_required: 'iOS HealthKit',
+          watch_bridge_ready: 'Watch 브리지 준비',
+          manual_import_planned: '업로드 준비 중',
           partner_review_required: '개발자 승인 필요',
           no_public_api: '공개 API 없음'
         };
@@ -192,15 +195,35 @@
 
       function providerBadgeClass(status) {
         if (status === 'live') return 'primary';
-        if (status === 'bridge_backend_ready') return 'info';
+        if (status === 'bridge_backend_ready' || status === 'mobile_app_required' || status === 'watch_bridge_ready') return 'info';
         if (status === 'partner_review_required') return 'warning';
+        return '';
+      }
+
+      function renderProviderAction(provider) {
+        if (provider.actionUrl) {
+          return `<a class="btn btn-primary provider-action" href="${provider.actionUrl}">${provider.actionLabel}</a>`;
+        }
+
+        return `<button class="btn btn-secondary provider-action" type="button" disabled>${provider.actionLabel}</button>`;
+      }
+
+      function renderSecondaryAction(provider) {
+        if (provider.secondaryActionUrl) {
+          return `<a class="btn btn-secondary provider-action" href="${provider.secondaryActionUrl}">${provider.secondaryActionLabel}</a>`;
+        }
+
+        if (provider.docsUrl) {
+          return `<a class="btn btn-secondary provider-action" href="${provider.docsUrl}" target="_blank" rel="noreferrer">연동 문서</a>`;
+        }
+
         return '';
       }
 
       function renderProviders(providers) {
         providersEl.innerHTML = providers
           .map((provider) => `
-            <div class="provider-card">
+            <div class="provider-card" id="provider-${provider.id}">
               <div class="provider-header">
                 <div class="provider-info">
                   <span class="badge ${providerBadgeClass(provider.status)}">${providerStatusText(provider.status)}</span>
@@ -211,13 +234,9 @@
               <p class="provider-desc">${provider.summary}</p>
               <p class="provider-caveat">${provider.caveat}</p>
               ${provider.apiUrl ? `<p style="font-size: 0.8rem; margin: 4px 0;"><code style="background-color: var(--bg-color); border: 1px solid var(--border-color);">${provider.apiUrl}</code></p>` : ''}
-              <div class="flex gap-md" style="margin-top: 8px;">
-                ${
-                  provider.actionUrl
-                    ? `<a class="btn btn-primary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" href="${provider.actionUrl}">${provider.actionLabel}</a>`
-                    : `<button class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" type="button" disabled>${provider.actionLabel}</button>`
-                }
-                <a class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;" href="${provider.docsUrl}" target="_blank" rel="noreferrer">연동 문서</a>
+              <div class="provider-actions">
+                ${renderProviderAction(provider)}
+                ${renderSecondaryAction(provider)}
               </div>
             </div>
           `)

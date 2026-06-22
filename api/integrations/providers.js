@@ -10,8 +10,10 @@ export default async function handler(req, res) {
       rollout: {
         multiUser: 'ready_in_app',
         directOAuth: ['strava'],
-        bridgeBackendReady: ['apple-health'],
+        mobileBridgeRequired: ['apple-health'],
+        bridgeBackendReady: ['apple-health', 'liverun-watch'],
         requiresPartnerApproval: ['garmin'],
+        manualImportPlanned: ['file-import'],
         importOrStravaSync: ['nike-run-club']
       }
     });

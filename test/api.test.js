@@ -450,11 +450,23 @@ test('integration providers exposes provider rollout status', async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.rollout.directOAuth, ['strava']);
-  assert.equal(res.body.providers.find((provider) => provider.id === 'strava').status, 'live');
-  assert.deepEqual(res.body.rollout.bridgeBackendReady, ['apple-health']);
-  assert.equal(res.body.providers.find((provider) => provider.id === 'apple-health').status, 'bridge_backend_ready');
-  assert.equal(res.body.providers.find((provider) => provider.id === 'garmin').status, 'partner_review_required');
-  assert.equal(res.body.providers.find((provider) => provider.id === 'nike-run-club').status, 'no_public_api');
+  assert.deepEqual(res.body.rollout.mobileBridgeRequired, ['apple-health']);
+  assert.deepEqual(res.body.rollout.bridgeBackendReady, ['apple-health', 'liverun-watch']);
+  assert.deepEqual(res.body.rollout.requiresPartnerApproval, ['garmin']);
+  assert.deepEqual(res.body.rollout.manualImportPlanned, ['file-import']);
+
+  const providerById = Object.fromEntries(res.body.providers.map((provider) => [provider.id, provider]));
+  assert.equal(providerById.strava.status, 'live');
+  assert.equal(providerById.strava.actionLabel, 'Strava 연결');
+  assert.equal(providerById['apple-health'].status, 'mobile_app_required');
+  assert.equal(providerById['apple-health'].actionLabel, 'Apple 건강 앱 연결');
+  assert.equal(providerById.garmin.status, 'partner_review_required');
+  assert.equal(providerById.garmin.actionLabel, 'Garmin 연결');
+  assert.equal(providerById['liverun-watch'].status, 'watch_bridge_ready');
+  assert.equal(providerById['liverun-watch'].actionLabel, 'Apple Watch LiveRun 연결');
+  assert.equal(providerById['file-import'].status, 'manual_import_planned');
+  assert.equal(providerById['file-import'].actionLabel, 'GPX/FIT/TCX 업로드');
+  assert.equal(providerById['nike-run-club'].status, 'no_public_api');
 });
 
 test('apple health ingest rejects unauthorized requests', async () => {

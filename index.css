@@ -762,7 +762,7 @@ header .nav-container {
 .provider-card {
   background-color: var(--bg-card-solid);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -801,6 +801,28 @@ header .nav-container {
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px dashed var(--border-color);
+}
+
+.provider-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.provider-action {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+}
+
+@media (max-width: 520px) {
+  .provider-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Collapsible Developer API Terminal Drawer */
