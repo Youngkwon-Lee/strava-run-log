@@ -244,7 +244,10 @@
         refreshButton.disabled = true;
         recordsEl.innerHTML = '<p class="text-muted">최근 기록을 불러오고 있습니다...</p>';
         try {
-          const data = await fetch('/api/strava/activities?days=90&limit=5&details=false').then((r) => r.json());
+          let data = await fetch('/api/strava/activities?days=90&limit=5&details=false').then((r) => r.json());
+          if (!data.ok) {
+            data = await fetch('/api/strava/activities?source=stored&days=90&limit=5').then((r) => r.json());
+          }
           if (!data.ok) throw new Error(data.error || 'records failed');
           renderRecords(data.activities);
         } catch (e) {
@@ -266,7 +269,7 @@
       // Initialize Page
       loadProviders();
       loadMe().then((me) => {
-        if (me.connected) loadRecords();
+        loadRecords();
       });
     </script>
   </body>

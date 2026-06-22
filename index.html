@@ -703,6 +703,28 @@
         }
       }
 
+      async function loadStoredDashboardData() {
+        const [activitiesRes, weeklyRes] = await Promise.all([
+          fetch('/api/strava/activities?source=stored&days=90&limit=5').then(r => r.json()),
+          fetch('/api/strava/weekly-report?source=stored').then(r => r.json())
+        ]);
+
+        return {
+          activities: activitiesRes.ok ? activitiesRes.activities || [] : [],
+          summary: weeklyRes.ok ? weeklyRes.summary : null
+        };
+      }
+
+      function renderFallbackMockData() {
+        renderActivities(mockActivities);
+        renderWhoStats({
+          runCount: 3,
+          totalKm: 21.31,
+          moderateMinutes: 70,
+          progressToMinPct: 46
+        });
+      }
+
       // Main Load Function
       async function loadDashboard() {
         try {
@@ -728,31 +750,36 @@
               renderWhoStats({ progressToMinPct: 0 });
             }
           } else {
-            stravaStatusBadge.textContent = '체험 모드 (Strava 미연결)';
-            stravaStatusBadge.className = 'badge warning';
-            
-            // Render rich beautiful mock data so application is not empty
-            renderActivities(mockActivities);
-            renderWhoStats({
-              runCount: 3,
-              totalKm: 21.31,
-              moderateMinutes: 70,
-              progressToMinPct: 46
-            });
+            const stored = await loadStoredDashboardData();
+            if (stored.activities.length || stored.summary?.runCount) {
+              stravaStatusBadge.textContent = '저장 기록 표시 중';
+              stravaStatusBadge.className = 'badge info';
+              renderActivities(stored.activities);
+              renderWhoStats(stored.summary || { progressToMinPct: 0 });
+            } else {
+              stravaStatusBadge.textContent = '체험 모드 (Strava 미연결)';
+              stravaStatusBadge.className = 'badge warning';
+              renderFallbackMockData();
+            }
           }
         } catch (err) {
           console.error("Dashboard data load error:", err);
+          try {
+            const stored = await loadStoredDashboardData();
+            if (stored.activities.length || stored.summary?.runCount) {
+              stravaStatusBadge.textContent = '저장 기록 표시 중';
+              stravaStatusBadge.className = 'badge info';
+              renderActivities(stored.activities);
+              renderWhoStats(stored.summary || { progressToMinPct: 0 });
+              return;
+            }
+          } catch (storedErr) {
+            console.error("Stored dashboard data load error:", storedErr);
+          }
+
           stravaStatusBadge.textContent = '연결 오류';
           stravaStatusBadge.className = 'badge alert';
-          
-          // Render mock data so UI stays functional
-          renderActivities(mockActivities);
-          renderWhoStats({
-            runCount: 3,
-            totalKm: 21.31,
-            moderateMinutes: 70,
-            progressToMinPct: 46
-          });
+          renderFallbackMockData();
         }
       }
 

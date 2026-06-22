@@ -226,6 +226,7 @@ HealthKit 권한을 가진 iPhone 브리지 앱이 Apple Health 러닝 요약을
 curl "https://<your-domain>/api/strava/activities?days=90&limit=50&details=true"
 curl "https://<your-domain>/api/strava/activities?days=30&limit=10&streams=true"
 curl "https://<your-domain>/api/strava/activities?include_short=true"
+curl "https://<your-domain>/api/strava/activities?source=stored&days=90&limit=50"
 ```
 
 주요 응답 필드:
@@ -239,6 +240,24 @@ curl "https://<your-domain>/api/strava/activities?include_short=true"
 scope=read,activity:read_all
 approval_prompt=force
 ```
+
+### Run history store
+
+Apple Health ingest, Strava webhook, Strava activities 조회 결과는 공통 run history store에도 upsert됩니다.
+
+기본 저장 위치:
+- 로컬: `.data/runs.jsonl`
+- Vercel/serverless: `/tmp/strava-run-log/runs.jsonl`
+- 직접 지정: `RUN_STORE_PATH=/path/to/runs.jsonl`
+
+저장된 기록만 조회:
+
+```bash
+curl "https://<your-domain>/api/strava/activities?source=stored&days=90&limit=50"
+curl "https://<your-domain>/api/strava/weekly-report?source=stored"
+```
+
+주의: `/tmp` 기반 serverless 파일 저장은 인스턴스 재시작 시 사라질 수 있습니다. 장기 운영에서는 같은 `lib/run-store.js` 경계를 Postgres/KV/S3 같은 외부 저장소 어댑터로 교체하세요.
 
 ### `GET /api/strava/weekly-report`
 

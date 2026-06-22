@@ -8,6 +8,7 @@ import {
   summarizeActivities
 } from '../../lib/strava.js';
 import { postDiscord } from '../../lib/discord.js';
+import { filterStoredRuns, readStoredRuns, summarizeStoredRuns, upsertStoredRun } from '../../lib/run-store.js';
 
 function startOfWindow(days = 7) {
   const d = new Date();
@@ -19,18 +20,48 @@ export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 
-    const { token, authMode } = await getAccessTokenForRequest(req, res);
     const after = Math.floor(startOfWindow(7).getTime() / 1000);
+    const source = String(req.query.source || 'strava').trim().toLowerCase();
 
-    const activities = await listAthleteActivities(token, {
-      after,
-      perPage: 100,
-      limit: 200,
-      maxPages: 3
-    });
-    const allRuns = activities.filter(isRunActivity);
-    const runs = sortActivitiesNewestFirst(filterMinimumDistance(allRuns, 0.05).map(normalizeActivity));
-    const rollup = summarizeActivities(runs);
+    let runs;
+    let rollup;
+    let authMode;
+    let activityCount;
+    let ignoredShortRunCount;
+
+    if (source === 'stored') {
+      authMode = 'run-store';
+      runs = filterStoredRuns(await readStoredRuns(), {
+        minDistanceKm: 0.05,
+        after: new Date(after * 1000).toISOString()
+      });
+      rollup = summarizeStoredRuns(runs);
+      activityCount = runs.length;
+      ignoredShortRunCount = 0;
+    } else {
+      const tokenResult = await getAccessTokenForRequest(req, res);
+      authMode = tokenResult.authMode;
+
+      const activities = await listAthleteActivities(tokenResult.token, {
+        after,
+        perPage: 100,
+        limit: 200,
+        maxPages: 3
+      });
+      const allRuns = activities.filter(isRunActivity);
+      runs = sortActivitiesNewestFirst(filterMinimumDistance(allRuns, 0.05).map(normalizeActivity));
+      for (const run of runs) {
+        await upsertStoredRun({
+          ...run,
+          source: 'strava',
+          provider: 'strava',
+          externalId: run.id
+        });
+      }
+      rollup = summarizeActivities(runs);
+      activityCount = activities.length;
+      ignoredShortRunCount = allRuns.length - runs.length;
+    }
 
     const movingSec = runs.reduce((sum, a) => sum + Number(a.movingTimeSec || 0), 0);
     const totalKm = runs.reduce((sum, a) => sum + Number(a.distanceMeters || 0), 0) / 1000;
@@ -74,7 +105,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      source: 'strava',
+      source: source === 'stored' ? 'stored' : 'strava',
       authMode,
       window: {
         days: 7,
@@ -83,9 +114,9 @@ export default async function handler(req, res) {
         minDistanceKm: 0.05
       },
       fetched: {
-        activityCount: activities.length,
+        activityCount,
         runCount: runs.length,
-        ignoredShortRunCount: allRuns.length - runs.length
+        ignoredShortRunCount
       },
       summary,
       runs

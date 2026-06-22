@@ -1,6 +1,7 @@
 import { getActivityDetail, normalizeActivity, refreshTokenIfNeeded, summarizeActivity } from '../../lib/strava.js';
 import { buildPostRunCoaching } from '../../lib/coaching.js';
 import { postDiscord } from '../../lib/discord.js';
+import { upsertStoredRun } from '../../lib/run-store.js';
 
 const VERIFY_TOKEN = process.env.STRAVA_VERIFY_TOKEN;
 
@@ -29,6 +30,13 @@ export default async function handler(req, res) {
       const coaching = buildPostRunCoaching(detail, {
         targetPaceSec: Number(process.env.COACH_TARGET_PACE_SEC || 370),
         targetRpe: process.env.COACH_TARGET_RPE || '6~7'
+      });
+      await upsertStoredRun({
+        ...normalized,
+        source: 'strava',
+        provider: 'strava',
+        externalId: normalized.id,
+        coaching
       });
       const extra = [
         normalized.averageHeartrate ? `평균 HR ${Math.round(normalized.averageHeartrate)}` : '',

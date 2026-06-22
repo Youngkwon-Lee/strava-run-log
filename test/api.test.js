@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, mock, test } from 'node:test';
 
 const restoreEnvFns = [];
+const cleanupDirs = [];
 
-afterEach(() => {
+afterEach(async () => {
   mock.restoreAll();
   while (restoreEnvFns.length) restoreEnvFns.pop()();
+  while (cleanupDirs.length) {
+    await rm(cleanupDirs.pop(), { recursive: true, force: true });
+  }
 });
 
 function createMockResponse() {
@@ -63,6 +70,12 @@ function setEnv(values) {
 function withEnv(values) {
   const restore = setEnv(values);
   restoreEnvFns.push(restore);
+}
+
+async function withTempRunStore() {
+  const dir = await mkdtemp(join(tmpdir(), 'strava-run-log-test-'));
+  cleanupDirs.push(dir);
+  withEnv({ RUN_STORE_PATH: join(dir, 'runs.jsonl') });
 }
 
 async function importFresh(path) {
@@ -391,6 +404,7 @@ test('webhook ignores non-activity events', async () => {
 });
 
 test('webhook fetches activity details for activity create events', async () => {
+  await withTempRunStore();
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
     STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
@@ -459,6 +473,7 @@ test('apple health ingest rejects unauthorized requests', async () => {
 });
 
 test('apple health ingest validates signature and returns normalized summary', async () => {
+  await withTempRunStore();
   withEnv({
     APPLE_HEALTH_INGEST_TOKEN: 'apple-secret',
     APPLE_HEALTH_SIGNING_SECRET: 'apple-signing-secret',
@@ -509,6 +524,8 @@ test('apple health ingest validates signature and returns normalized summary', a
   assert.equal(res.body.summary.pace, '5:39/km');
   assert.equal(res.body.accepted.splitCount, 2);
   assert.equal(res.body.accepted.routePointCount, 0);
+  assert.equal(res.body.stored.inserted, true);
+  assert.equal(res.body.stored.count, 1);
   assert.equal(res.body.postedToDiscord, false);
   assert.match(res.body.coaching, /코칭:/);
 });
@@ -541,6 +558,67 @@ test('apple health ingest rejects invalid signature', async () => {
 
   assert.equal(res.statusCode, 401);
   assert.deepEqual(res.body, { error: 'invalid signature' });
+});
+
+test('stored activities include Apple Health ingests without Strava auth', async () => {
+  await withTempRunStore();
+  withEnv({
+    APPLE_HEALTH_INGEST_TOKEN: 'apple-secret',
+    DISCORD_WEBHOOK_URL: undefined
+  });
+
+  const body = {
+    external_run_id: 'apple_health_STORE-001',
+    user_id: 'youngkwon',
+    started_at: '2026-06-20T06:00:00Z',
+    ended_at: '2026-06-20T06:31:00Z',
+    distance_m: 5000,
+    moving_time_s: 1800,
+    elevation_gain_m: 25,
+    avg_hr: 150,
+    cadence_avg: 172,
+    send_to_discord: false
+  };
+
+  const { default: ingestHandler } = await importFresh('../api/apple-health/ingest.js');
+  const ingestRes = await callHandler(ingestHandler, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer apple-secret' },
+    query: {},
+    body
+  });
+
+  assert.equal(ingestRes.statusCode, 200);
+  assert.equal(ingestRes.body.stored.inserted, true);
+
+  const { default: activitiesHandler } = await importFresh('../api/strava/activities.js');
+  const activitiesRes = await callHandler(activitiesHandler, {
+    method: 'GET',
+    headers: {},
+    query: { source: 'stored', days: '30', limit: '5' },
+    body: {}
+  });
+
+  assert.equal(activitiesRes.statusCode, 200);
+  assert.equal(activitiesRes.body.source, 'stored');
+  assert.equal(activitiesRes.body.authMode, 'run-store');
+  assert.equal(activitiesRes.body.summary.totalKm, 5);
+  assert.equal(activitiesRes.body.activities[0].source, 'apple-health');
+  assert.equal(activitiesRes.body.activities[0].pace, '6:00/km');
+
+  const { default: weeklyHandler } = await importFresh('../api/strava/weekly-report.js');
+  const weeklyRes = await callHandler(weeklyHandler, {
+    method: 'GET',
+    headers: {},
+    query: { source: 'stored' },
+    body: {}
+  });
+
+  assert.equal(weeklyRes.statusCode, 200);
+  assert.equal(weeklyRes.body.source, 'stored');
+  assert.equal(weeklyRes.body.summary.runCount, 1);
+  assert.equal(weeklyRes.body.summary.totalKm, 5);
+  assert.equal(weeklyRes.body.runs[0].source, 'apple-health');
 });
 
 test('strava connect redirects to OAuth and sets state cookie', async () => {
@@ -652,6 +730,7 @@ test('strava activities requires user OAuth session by default', async () => {
 });
 
 test('strava activities endpoint returns rich run details and optional streams', async () => {
+  await withTempRunStore();
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
     STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
@@ -727,6 +806,7 @@ test('strava activities endpoint returns rich run details and optional streams',
 });
 
 test('weekly report summarizes recent Strava runs', async () => {
+  await withTempRunStore();
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
     STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,

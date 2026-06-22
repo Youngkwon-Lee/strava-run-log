@@ -9,6 +9,7 @@ import {
   sortActivitiesNewestFirst,
   summarizeActivities
 } from '../../lib/strava.js';
+import { filterStoredRuns, readStoredRuns, summarizeStoredRuns, upsertStoredRun } from '../../lib/run-store.js';
 
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -90,6 +91,34 @@ export default async function handler(req, res) {
       ? 0
       : parseNumber(query.min_distance_km, { min: 0, max: 5, fallback: 0.05 });
     const window = getWindow(query);
+    const source = String(query.source || 'strava').trim().toLowerCase();
+
+    if (source === 'stored') {
+      const storedRuns = filterStoredRuns(await readStoredRuns(), {
+        minDistanceKm,
+        after: window.afterIso,
+        before: window.beforeIso
+      }).slice(0, limit);
+
+      return res.status(200).json({
+        ok: true,
+        source: 'stored',
+        authMode: 'run-store',
+        query: {
+          ...window,
+          limit,
+          includeShort,
+          minDistanceKm
+        },
+        fetched: {
+          activityCount: storedRuns.length,
+          runCount: storedRuns.length,
+          ignoredShortRunCount: 0
+        },
+        summary: summarizeStoredRuns(storedRuns),
+        activities: storedRuns
+      });
+    }
 
     const { token, authMode } = await getAccessTokenForRequest(req, res);
     const activities = await listAthleteActivities(token, {
@@ -105,7 +134,14 @@ export default async function handler(req, res) {
     const runs = sortActivitiesNewestFirst(filteredRuns).slice(0, limit);
     const enriched = [];
     for (const run of runs) {
-      enriched.push(await enrichActivity(run, token, { includeDetails, includeStreams }));
+      const normalized = await enrichActivity(run, token, { includeDetails, includeStreams });
+      enriched.push(normalized);
+      await upsertStoredRun({
+        ...normalized,
+        source: 'strava',
+        provider: 'strava',
+        externalId: normalized.id
+      });
     }
     const sorted = sortActivitiesNewestFirst(enriched);
 

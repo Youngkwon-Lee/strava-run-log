@@ -7,6 +7,7 @@ import {
   validateAppleHealthPayload,
   verifyAppleHealthRequest
 } from '../../lib/apple-health.js';
+import { normalizeAppleHealthRunForStore, upsertStoredRun } from '../../lib/run-store.js';
 
 function shouldSendToDiscord(body) {
   if (body?.send_to_discord === false || body?.send_to_discord === 'false' || body?.send_to_discord === 0 || body?.send_to_discord === '0') {
@@ -45,6 +46,8 @@ export default async function handler(req, res) {
       postedToDiscord = Boolean(process.env.DISCORD_WEBHOOK_URL);
     }
 
+    const stored = await upsertStoredRun(normalizeAppleHealthRunForStore(parsed, summary, coaching));
+
     return res.status(200).json({
       ok: true,
       id: parsed.externalRunId,
@@ -53,6 +56,10 @@ export default async function handler(req, res) {
       postedToDiscord,
       summary,
       coaching,
+      stored: {
+        inserted: stored.inserted,
+        count: stored.count
+      },
       accepted: {
         splitCount: parsed.splits.length,
         routePointCount: parsed.routePoints.length
