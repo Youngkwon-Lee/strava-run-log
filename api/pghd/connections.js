@@ -1,12 +1,15 @@
 import {
   getPghdConnectionsPersonColumn,
   getPghdConnectionsTable,
-  normalizePghdProvider
+  normalizePghdProvider,
+  pghdProviderAliases,
+  toPghdStorageProvider
 } from '../../lib/pghd-connections.js';
 import { assertSimpleIdentifier, supabaseFetch } from '../../lib/supabase-rest.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PROVIDERS = new Set(['apple-health', 'strava', 'garmin', 'file-import', 'samsung-health', 'nike-run-club']);
+const PROVIDERS = new Set(['apple-health', 'health-connect', 'google-fit', 'fitbit', 'garmin', 'google-calendar']);
+const STATUSES = new Set(['pending', 'connected', 'disconnected', 'error', 'revoked']);
 
 function getHeader(req, name) {
   const headers = req.headers || {};
@@ -74,7 +77,7 @@ async function listConnections(query) {
 
   const provider = text(query.provider, 'provider', { required: false, maxLength: 80 });
   if (provider.error) return { errors: [provider.error] };
-  if (provider.value) params.set('provider', `eq.${normalizePghdProvider(provider.value)}`);
+  if (provider.value) params.set('provider', `in.(${pghdProviderAliases(provider.value).map(encodeURIComponent).join(',')})`);
 
   const providerUserId = text(query.provider_user_id, 'provider_user_id', { required: false, maxLength: 200 });
   if (providerUserId.error) return { errors: [providerUserId.error] };
@@ -94,17 +97,21 @@ async function upsertConnection(body) {
   const personId = collect(uuid(body.person_id, 'person_id'));
   const provider = normalizePghdProvider(collect(text(body.provider, 'provider', { maxLength: 80 })));
   const providerUserId = collect(text(body.provider_user_id, 'provider_user_id', { maxLength: 200 }));
-  const status = collect(text(body.connection_status, 'connection_status', { required: false, maxLength: 40 })) || 'active';
+  const requestedStatus = collect(text(body.connection_status, 'connection_status', { required: false, maxLength: 40 }));
+  const status = requestedStatus === 'active' ? 'connected' : requestedStatus || 'connected';
   const metadata = collect(parseMetadata(body.metadata));
 
   if (provider && !PROVIDERS.has(provider)) {
     errors.push(`provider must be one of: ${Array.from(PROVIDERS).join(', ')}`);
   }
+  if (status && !STATUSES.has(status)) {
+    errors.push(`connection_status must be one of: ${Array.from(STATUSES).join(', ')}; active is accepted as connected`);
+  }
   if (errors.length) return { errors };
 
   const payload = compactObject({
     [person]: personId,
-    provider,
+    provider: toPghdStorageProvider(provider),
     provider_user_id: providerUserId,
     connection_status: status,
     metadata

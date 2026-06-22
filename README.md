@@ -45,7 +45,7 @@ PGHD/Supabase 실제 연결까지 확인하려면 운영 DB 키가 있는 로컬
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run smoke:pghd
 ```
 
-이 스모크는 기존 `pghd_connections`의 유효한 `person_id`를 재사용해 Apple Health 테스트 기록을 저장하고, `run_log_weekly_summaries` 조회와 `activity_sessions` 승격까지 확인한 뒤 생성한 테스트 row를 삭제합니다. `RUN_LOG_ADMIN_TOKEN`과 `APPLE_HEALTH_INGEST_TOKEN`이 없으면 로컬 핸들러 호출용 임시 토큰을 사용합니다.
+이 스모크는 기존 `pghd_connections`의 유효한 `person_id`를 재사용해 Apple Health 테스트 기록을 저장하고, `run_log_weekly_summaries` 조회와 `activity_sessions` 승격까지 확인한 뒤 생성한 테스트 row를 삭제합니다. `RUN_LOG_ADMIN_TOKEN`과 `APPLE_HEALTH_INGEST_TOKEN`이 없으면 로컬 핸들러 호출용 임시 토큰을 사용합니다. 로컬 env가 없으면 `PGHD_SMOKE_ENV_FILE` 또는 `/Users/youngkwon/projects/physio_app/.env.local`에서 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`를 자동으로 읽습니다.
 
 서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
 
@@ -423,7 +423,7 @@ POST body:
   "person_id": "11111111-1111-4111-8111-111111111111",
   "provider": "apple-health",
   "provider_user_id": "youngkwon",
-  "connection_status": "active",
+  "connection_status": "connected",
   "metadata": { "source": "settings-ui" }
 }
 ```

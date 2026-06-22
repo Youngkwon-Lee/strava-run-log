@@ -403,7 +403,7 @@
           <div class="pghd-week-card">
             <div class="pghd-week-header">
               <span>${connection.provider || '-'}</span>
-              <span class="badge ${connection.connection_status === 'active' ? 'primary' : 'warning'}">${connection.connection_status || 'unknown'}</span>
+              <span class="badge ${['active', 'connected'].includes(connection.connection_status) ? 'primary' : 'warning'}">${connection.connection_status || 'unknown'}</span>
             </div>
             <div class="pghd-week-metrics">
               <div><span>${connection.person_id || '-'}</span><small>person</small></div>
@@ -468,7 +468,7 @@
               person_id: pghdPersonId.value.trim(),
               provider: pghdProvider.value.trim(),
               provider_user_id: pghdProviderUserId.value.trim(),
-              connection_status: 'active',
+              connection_status: 'connected',
               metadata: { source: 'settings-ui' }
             })
           }).then((r) => r.json().then((body) => ({ ok: r.ok, body })));

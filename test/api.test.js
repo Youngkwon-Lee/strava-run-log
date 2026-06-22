@@ -882,9 +882,9 @@ test('run-log promotion resolves subject person from PGHD connection', async () 
         {
           id: '33333333-3333-4333-8333-333333333333',
           person_id: subjectPersonId,
-          provider: 'apple-health',
+          provider: 'apple_health',
           provider_user_id: 'youngkwon',
-          connection_status: 'active'
+          connection_status: 'connected'
         }
       ]);
     }
@@ -1023,9 +1023,9 @@ test('PGHD connections upserts provider mapping', async () => {
     assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
     const body = JSON.parse(options.body);
     assert.equal(body.person_id, personId);
-    assert.equal(body.provider, 'apple-health');
+    assert.equal(body.provider, 'apple_health');
     assert.equal(body.provider_user_id, 'youngkwon');
-    assert.equal(body.connection_status, 'active');
+    assert.equal(body.connection_status, 'connected');
     return Response.json([{ id: '22222222-2222-4222-8222-222222222222', ...body }]);
   });
 
@@ -1043,7 +1043,7 @@ test('PGHD connections upserts provider mapping', async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
-  assert.equal(res.body.connection.provider, 'apple-health');
+  assert.equal(res.body.connection.provider, 'apple_health');
   assert.equal(fetchMock.mock.callCount(), 1);
 });
 
@@ -1060,7 +1060,7 @@ test('PGHD connections lists provider mappings', async () => {
     const href = String(url);
     assert.match(href, /\/rest\/v1\/pghd_connections\?/);
     assert.match(href, /person_id=eq\.11111111-1111-4111-8111-111111111111/);
-    assert.match(href, /provider=eq\.strava/);
+    assert.match(href, /provider=in\.%28strava%29/);
     assert.equal(options.headers.apikey, 'service-role-key');
     return Response.json([
       {
@@ -1068,7 +1068,7 @@ test('PGHD connections lists provider mappings', async () => {
         person_id: personId,
         provider: 'strava',
         provider_user_id: '12345',
-        connection_status: 'active'
+        connection_status: 'connected'
       }
     ]);
   });

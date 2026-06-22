@@ -168,9 +168,9 @@ test('Supabase run store resolves PGHD connection before upsert', async () => {
         {
           id: connectionId,
           person_id: subjectPersonId,
-          provider: 'apple-health',
+          provider: 'apple_health',
           provider_user_id: 'youngkwon',
-          connection_status: 'active'
+          connection_status: 'connected'
         }
       ]);
     }

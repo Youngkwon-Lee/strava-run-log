@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { createHmac } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import appleHealthIngestHandler from '../api/apple-health/ingest.js';
 import pghdConnectionsHandler from '../api/pghd/connections.js';
 import promoteToActivitySessionHandler from '../api/run-log/promote-to-activity-session.js';
 import weeklySummariesHandler from '../api/run-log/weekly-summaries.js';
 import { supabaseFetch } from '../lib/supabase-rest.js';
+
+const DEFAULT_PHYSIO_APP_ENV_FILE = '/Users/youngkwon/projects/physio_app/.env.local';
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -13,7 +16,46 @@ function requireEnv(name) {
   return value;
 }
 
+function parseEnvFile(path) {
+  const parsed = {};
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    parsed[match[1]] = value;
+  }
+  return parsed;
+}
+
+function loadFallbackEnv() {
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+
+  const candidates = [
+    process.env.PGHD_SMOKE_ENV_FILE,
+    DEFAULT_PHYSIO_APP_ENV_FILE
+  ].filter(Boolean);
+
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+
+    const parsed = parseEnvFile(path);
+    process.env.SUPABASE_URL = process.env.SUPABASE_URL || parsed.SUPABASE_URL || parsed.NEXT_PUBLIC_SUPABASE_URL || '';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || parsed.SUPABASE_SERVICE_ROLE_KEY || '';
+    process.env.RUN_LOG_ADMIN_TOKEN = process.env.RUN_LOG_ADMIN_TOKEN || parsed.RUN_LOG_ADMIN_TOKEN || '';
+    process.env.APPLE_HEALTH_INGEST_TOKEN = process.env.APPLE_HEALTH_INGEST_TOKEN || parsed.APPLE_HEALTH_INGEST_TOKEN || '';
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  }
+}
+
 function ensureRuntimeEnv() {
+  loadFallbackEnv();
   requireEnv('SUPABASE_URL');
   requireEnv('SUPABASE_SERVICE_ROLE_KEY');
   process.env.RUN_STORE_BACKEND = process.env.RUN_STORE_BACKEND || 'supabase';
@@ -107,7 +149,7 @@ async function ensureAppleHealthConnection(stamp) {
       person_id: base.person_id,
       provider: 'apple-health',
       provider_user_id: providerUserId,
-      connection_status: 'active',
+      connection_status: 'connected',
       metadata: {
         smoke: true,
         created_by: 'scripts/smoke_pghd_e2e.mjs'
