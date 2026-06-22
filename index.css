@@ -651,6 +651,40 @@ header .nav-container {
   color: var(--text-muted);
 }
 
+.trend-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.trend-item {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-solid);
+}
+
+.trend-label,
+.trend-value {
+  display: block;
+}
+
+.trend-label {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.trend-value {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Activity logs / Records list style */
 .records-container {
   display: flex;
@@ -872,5 +906,9 @@ header .nav-container {
 @media (max-width: 768px) {
   .grid-cols-2, .grid-cols-3 {
     grid-template-columns: 1fr;
+  }
+
+  .trend-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

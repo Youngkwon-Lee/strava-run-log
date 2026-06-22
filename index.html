@@ -78,6 +78,24 @@
                   <span class="progress-metric-lbl">중강도 분</span>
                 </div>
               </div>
+              <div class="trend-strip">
+                <div class="trend-item">
+                  <span class="trend-label">4주 거리</span>
+                  <span class="trend-value" id="trend-distance">-</span>
+                </div>
+                <div class="trend-item">
+                  <span class="trend-label">평균 페이스</span>
+                  <span class="trend-value" id="trend-pace">-</span>
+                </div>
+                <div class="trend-item">
+                  <span class="trend-label">평균 HR</span>
+                  <span class="trend-value" id="trend-hr">-</span>
+                </div>
+                <div class="trend-item">
+                  <span class="trend-label">꾸준함</span>
+                  <span class="trend-value" id="trend-consistency">-</span>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -284,6 +302,10 @@
       const summaryRunCount = document.getElementById('summary-run-count');
       const summaryTotalDistance = document.getElementById('summary-total-distance');
       const summaryActiveMinutes = document.getElementById('summary-active-minutes');
+      const trendDistance = document.getElementById('trend-distance');
+      const trendPace = document.getElementById('trend-pace');
+      const trendHr = document.getElementById('trend-hr');
+      const trendConsistency = document.getElementById('trend-consistency');
       
       // Runs elements
       const runsList = document.getElementById('runs-list');
@@ -703,6 +725,40 @@
         }
       }
 
+      function parsePaceToSec(pace) {
+        const match = String(pace || '').match(/^(\d+):(\d{2})/);
+        if (!match) return null;
+        return Number(match[1]) * 60 + Number(match[2]);
+      }
+
+      function renderRunTrends(activities) {
+        const now = Date.now();
+        const fourWeeksAgo = now - 28 * 24 * 60 * 60 * 1000;
+        const recent = (activities || []).filter((run) => {
+          const time = Date.parse(run.startDate || run.startedAt || run.startDateLocal || '');
+          return Number.isFinite(time) && time >= fourWeeksAgo && time <= now + 24 * 60 * 60 * 1000;
+        });
+
+        const totalMeters = recent.reduce((sum, run) => sum + Number(run.distanceMeters || (run.distanceKm ? run.distanceKm * 1000 : 0) || 0), 0);
+        const movingSec = recent.reduce((sum, run) => sum + Number(run.movingTimeSec || run.moving_time || 0), 0);
+        const hrValues = recent.map((run) => Number(run.averageHeartrate || run.avgHr)).filter(Number.isFinite);
+        const weeks = new Set(recent.map((run) => {
+          const date = new Date(run.startDate || run.startedAt || run.startDateLocal);
+          const weekStart = new Date(date);
+          weekStart.setHours(0, 0, 0, 0);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          return weekStart.toISOString().slice(0, 10);
+        }));
+        const avgPaceSec = totalMeters > 0 && movingSec > 0
+          ? movingSec / (totalMeters / 1000)
+          : recent.map((run) => Number(run.paceSecPerKm || parsePaceToSec(run.pace))).find(Number.isFinite);
+
+        trendDistance.textContent = `${(totalMeters / 1000).toFixed(1)}km`;
+        trendPace.textContent = avgPaceSec ? `${formatSecToMinSec(avgPaceSec)}/km` : '-';
+        trendHr.textContent = hrValues.length ? `${Math.round(hrValues.reduce((sum, value) => sum + value, 0) / hrValues.length)} bpm` : '-';
+        trendConsistency.textContent = recent.length ? `${weeks.size}/4주` : '-';
+      }
+
       async function loadStoredDashboardData() {
         const [activitiesRes, weeklyRes] = await Promise.all([
           fetch('/api/strava/activities?source=stored&days=90&limit=5').then(r => r.json()),
@@ -717,6 +773,7 @@
 
       function renderFallbackMockData() {
         renderActivities(mockActivities);
+        renderRunTrends(mockActivities);
         renderWhoStats({
           runCount: 3,
           totalKm: 21.31,
@@ -738,8 +795,10 @@
             const actRes = await fetch('/api/strava/activities?days=90&limit=5&details=true').then(r => r.json());
             if (actRes.ok && actRes.activities) {
               renderActivities(actRes.activities);
+              renderRunTrends(actRes.activities);
             } else {
               renderActivities([]);
+              renderRunTrends([]);
             }
 
             // Load weekly report from API
@@ -755,6 +814,7 @@
               stravaStatusBadge.textContent = '저장 기록 표시 중';
               stravaStatusBadge.className = 'badge info';
               renderActivities(stored.activities);
+              renderRunTrends(stored.activities);
               renderWhoStats(stored.summary || { progressToMinPct: 0 });
             } else {
               stravaStatusBadge.textContent = '체험 모드 (Strava 미연결)';
@@ -770,6 +830,7 @@
               stravaStatusBadge.textContent = '저장 기록 표시 중';
               stravaStatusBadge.className = 'badge info';
               renderActivities(stored.activities);
+              renderRunTrends(stored.activities);
               renderWhoStats(stored.summary || { progressToMinPct: 0 });
               return;
             }
