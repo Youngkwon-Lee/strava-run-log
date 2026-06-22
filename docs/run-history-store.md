@@ -131,6 +131,24 @@ Free plan notes:
 - Avoid storing dense GPS streams, route points, screenshots, or raw wearable telemetry in `raw`.
 - If the project grows to multiple users or large route history, move high-volume telemetry to object storage or a separate compressed table with retention.
 
+## Smoke Test
+
+After applying the table and setting env vars, verify the adapter without Vercel:
+
+```bash
+RUN_STORE_BACKEND=supabase \
+SUPABASE_URL=https://<project-ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key> \
+RUN_STORE_SUPABASE_TABLE=run_log_runs \
+node scripts/smoke_supabase_run_store.mjs
+```
+
+The script upserts one `source='smoke-test'` row, reads it back through `lib/run-store.js`, and prints a compact JSON result. Delete smoke rows after verification:
+
+```sql
+delete from public.run_log_runs where source = 'smoke-test';
+```
+
 ## Next Adapter Shape
 
 The next storage adapter should preserve these operations:

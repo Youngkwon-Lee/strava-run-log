@@ -291,6 +291,7 @@ RUN_STORE_SUPABASE_TABLE=run_log_runs
 - `SUPABASE_SERVICE_ROLE_KEY`는 서버 환경변수로만 설정하고 브라우저에 노출하지 않습니다.
 - DB schema는 `supabase/migrations/20260622014705_create_run_store.sql`을 Supabase SQL editor 또는 CLI로 적용합니다.
 - `public.run_log_runs`는 RLS enabled 상태입니다. 현재 앱은 server-side service role 접근을 전제로 합니다.
+- 로컬 검증은 `scripts/smoke_supabase_run_store.mjs`로 실행합니다.
 
 ### `GET /api/strava/weekly-report`
 
