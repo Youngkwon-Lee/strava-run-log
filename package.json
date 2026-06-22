@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "smoke:pghd": "node scripts/smoke_pghd_e2e.mjs"
+    "smoke:pghd": "node scripts/smoke_pghd_e2e.mjs",
+    "smoke:pghd:db": "supabase db query --linked --file scripts/smoke_pghd_db.sql -o table"
   }
 }

@@ -47,6 +47,12 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run smoke:pghd
 
 이 스모크는 기존 `pghd_connections`의 유효한 `person_id`를 재사용해 Apple Health 테스트 기록을 저장하고, `run_log_weekly_summaries` 조회와 `activity_sessions` 승격까지 확인한 뒤 생성한 테스트 row를 삭제합니다. `RUN_LOG_ADMIN_TOKEN`과 `APPLE_HEALTH_INGEST_TOKEN`이 없으면 로컬 핸들러 호출용 임시 토큰을 사용합니다.
 
+서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
+
+```bash
+npm run smoke:pghd:db
+```
+
 ### 1) Strava API 앱 만들기
 1. `https://www.strava.com/settings/api` 접속
 2. 앱 생성 (아이콘 업로드 필요할 수 있음)
