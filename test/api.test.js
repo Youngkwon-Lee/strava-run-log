@@ -99,6 +99,31 @@ test('live metrics rejects unsupported methods', async () => {
   assert.deepEqual(res.body, { error: 'method not allowed' });
 });
 
+test('bridge contract exposes Apple Health and LiveRun payload contract', async () => {
+  withEnv({ PUBLIC_BASE_URL: 'https://example.test' });
+  const { default: handler } = await importFresh('../api/bridge/contract.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.contractVersion, '2026-06-22');
+  assert.equal(res.body.endpoints.appleHealthIngest.url, 'https://example.test/api/apple-health/ingest');
+  assert.equal(res.body.endpoints.appleHealthIngest.requiredFields.external_run_id, 'string, stable idempotency key from the mobile app');
+  assert.equal(res.body.endpoints.liveMetrics.url, 'https://example.test/api/live/metrics');
+  assert.equal(res.body.endpoints.liveMetrics.optionalFields.pace_sec, 'number, seconds per km, 0 means unavailable');
+  assert.deepEqual(res.body.auth.liveMetrics.acceptedHeaders, [
+    'Authorization: Bearer <token>',
+    'x-live-metrics-token: <token>',
+    'x-live-token: <token>'
+  ]);
+});
+
 test('live metrics rejects missing auth when token is configured', async () => {
   withEnv({ LIVE_METRICS_TOKEN: 'bridge-secret' });
   const { default: handler } = await importFresh('../api/live/metrics.js');
@@ -137,6 +162,7 @@ test('live metrics accepts bearer token auth', async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
+  assert.equal(res.body.contractVersion, '2026-06-22');
   assert.equal(res.body.sent, true);
 });
 

@@ -158,6 +158,7 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 
 - `GET /settings.html`: 연결 설정 페이지
 - `GET /api/integrations/providers`: Apple Health, Strava, Garmin, Apple Watch LiveRun, GPX/TCX 파일, Nike Run Club 연동 상태/방식
+- `GET /api/bridge/contract`: iOS/Watch bridge가 따라야 할 endpoint, 인증, payload 계약
 - `GET /api/strava/connect`: Strava OAuth 승인 시작
 - `GET /api/strava/callback`: Strava 승인 후 토큰 교환
 - `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
@@ -184,6 +185,23 @@ strava-run-log.vercel.app
 ```
 
 주의: 새 Strava 앱은 기본적으로 Athlete Capacity 1(Single Player Mode)입니다. 실제 여러 사용자에게 공개하려면 Strava Developer Program review를 통과해서 capacity를 늘려야 합니다.
+
+### `GET /api/bridge/contract`
+
+iOS/Watch bridge 앱이 런타임 또는 개발 중에 확인할 수 있는 계약 endpoint입니다.
+
+반환 내용:
+- `contractVersion`
+- Apple Health workout 저장 endpoint: `POST /api/apple-health/ingest`
+- Apple Watch LiveRun 실시간 코칭 endpoint: `POST /api/live/metrics`
+- 각 endpoint의 인증 헤더, 필수/선택 필드, 단위, 응답 필드
+- idempotency, HealthKit 권한, live metrics 전송 주기 가이드
+
+이 계약의 기본 원칙:
+- HealthKit 권한 요청은 iOS 앱에서 처리합니다.
+- 서버는 사용자 동의 후 받은 데이터만 ingest합니다.
+- workout 저장은 `external_run_id`를 기준으로 idempotent upsert합니다.
+- live metrics는 저장용이 아니라 코칭용이며, 저장할 최종 workout은 `/api/apple-health/ingest`로 보냅니다.
 
 ### `POST /api/import/run-file`
 
@@ -378,6 +396,7 @@ export WEBHOOK_CALLBACK_URL="https://<your-vercel-domain>/api/strava/webhook"
 실시간 데이터 브리지에서 아래 endpoint로 metrics를 push하면 코칭 메시지가 Discord로 전송됩니다.
 
 - `POST /api/live/metrics`
+- 계약 확인: `GET /api/bridge/contract`
 - Body(JSON):
 ```json
 {

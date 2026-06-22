@@ -1,4 +1,5 @@
 import { buildPostRunCoaching } from '../../lib/coaching.js';
+import { BRIDGE_CONTRACT_VERSION } from '../../lib/bridge-contract.js';
 import { postDiscord } from '../../lib/discord.js';
 import {
   buildAppleHealthDiscordMessage,
@@ -52,7 +53,7 @@ export default async function handler(req, res) {
       ok: true,
       id: parsed.externalRunId,
       source: 'apple-health',
-      contractVersion: '2026-05-25',
+      contractVersion: BRIDGE_CONTRACT_VERSION,
       postedToDiscord,
       summary,
       coaching,

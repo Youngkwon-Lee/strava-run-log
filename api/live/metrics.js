@@ -1,5 +1,6 @@
 import { buildLiveCoachingDecision } from '../../lib/coaching.js';
 import { postDiscord } from '../../lib/discord.js';
+import { BRIDGE_CONTRACT_VERSION } from '../../lib/bridge-contract.js';
 
 const lastSentBySession = new Map();
 
@@ -164,6 +165,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
+      contractVersion: BRIDGE_CONTRACT_VERSION,
       sent,
       coaching: decision.text,
       severity: decision.severity,
