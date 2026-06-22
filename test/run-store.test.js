@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { mock, test, afterEach } from 'node:test';
 
 const restoreEnvFns = [];
+const cleanupDirs = [];
 
-afterEach(() => {
+afterEach(async () => {
   mock.restoreAll();
   while (restoreEnvFns.length) restoreEnvFns.pop()();
+  while (cleanupDirs.length) {
+    await rm(cleanupDirs.pop(), { recursive: true, force: true });
+  }
 });
 
 function setEnv(values) {
@@ -27,6 +34,12 @@ function setEnv(values) {
 
 async function importFresh(path) {
   return import(`${path}?t=${Date.now()}-${Math.random()}`);
+}
+
+async function tempRunStorePath() {
+  const dir = await mkdtemp(join(tmpdir(), 'strava-run-store-test-'));
+  cleanupDirs.push(dir);
+  return join(dir, 'runs.jsonl');
 }
 
 test('Supabase run store reads rows through PostgREST', async () => {
@@ -90,7 +103,10 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
       assert.equal(body.source, 'strava');
       assert.equal(body.external_id, '123');
       assert.equal(body.distance_meters, 5000);
+      assert.equal(body.data_classification, 'PGHD');
+      assert.equal(typeof body.raw_size_bytes, 'number');
       assert.equal(body.raw.externalId, '123');
+      assert.equal(body.raw.dataClassification, 'PGHD');
       return Response.json([{ ...body, created_at: '2026-06-20T06:00:00Z' }]);
     }
 
@@ -125,4 +141,45 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(result.run.source, 'strava');
   assert.equal(result.count, 1);
+});
+
+test('run store prunes dense telemetry from raw payloads', async () => {
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+  const path = await tempRunStorePath();
+  const result = await upsertStoredRun({
+    id: 'dense-001',
+    source: 'apple-health',
+    startDate: '2026-06-20T06:00:00Z',
+    distanceMeters: 5000,
+    movingTimeSec: 1800,
+    routePoints: Array.from({ length: 150 }, (_, index) => ({
+      lat: 37.5 + index / 10000,
+      lng: 127.0 + index / 10000
+    }))
+  }, { path });
+
+  assert.equal(result.run.routePoints, undefined);
+  assert.equal(result.run.routePointCount, 150);
+  assert.equal(result.run.telemetryRef.storage, 'external-required');
+  assert.equal(result.run.dataClassification, 'PGHD');
+  assert.equal(typeof result.run.rawSizeBytes, 'number');
+});
+
+test('run store rejects raw payloads over size budget', async () => {
+  setEnv({ RUN_STORE_MAX_RAW_BYTES: '4096' });
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+  const path = await tempRunStorePath();
+
+  await assert.rejects(
+    () =>
+      upsertStoredRun({
+        id: 'large-001',
+        source: 'file-import',
+        startDate: '2026-06-20T06:00:00Z',
+        distanceMeters: 5000,
+        movingTimeSec: 1800,
+        notes: 'x'.repeat(6000)
+      }, { path }),
+    /run raw payload exceeds RUN_STORE_MAX_RAW_BYTES/
+  );
 });

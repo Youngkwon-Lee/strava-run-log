@@ -21,6 +21,8 @@ The file is JSON Lines. Each line is one normalized run record.
 
 For Supabase mode, records are stored in `public.run_log_runs` and the canonical run payload is kept in the `raw` JSONB column. Typed columns such as `source`, `external_id`, `start_date`, `distance_meters`, and `moving_time_sec` are query/index helpers.
 
+For PGHD storage policy, retention, raw-size limits, telemetry handling, and dashboard aggregate guidance, see [`pghd-data-management.md`](pghd-data-management.md).
+
 ## Writers
 
 The store is upserted by:
@@ -79,6 +81,9 @@ Typical fields:
 - `orgClientProfileId`
 - `activitySessionId`
 - `linkedAt`
+- `dataClassification`
+- `rawSizeBytes`
+- `telemetryRef`
 - `storedAt`
 - `updatedAt`
 
@@ -135,6 +140,8 @@ Free plan notes:
 - Supabase Free is suitable for this project as a personal MVP if only normalized run summaries are stored.
 - Avoid storing dense GPS streams, route points, screenshots, or raw wearable telemetry in `raw`.
 - If the project grows to multiple users or large route history, move high-volume telemetry to object storage or a separate compressed table with retention.
+- `RUN_STORE_MAX_RAW_BYTES` defaults to `65536`; payloads above that are rejected before upsert.
+- `run_log_weekly_summaries` is the preferred query surface for weekly dashboard trends.
 
 ## Smoke Test
 

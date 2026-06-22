@@ -315,7 +315,7 @@ curl "https://<your-domain>/api/strava/weekly-report?source=stored"
 
 주의: `/tmp` 기반 serverless 파일 저장은 인스턴스 재시작 시 사라질 수 있습니다. 장기 운영에서는 같은 `lib/run-store.js` 경계를 Postgres/KV/S3 같은 외부 저장소 어댑터로 교체하세요.
 
-자세한 저장 계약과 한계는 [`docs/run-history-store.md`](docs/run-history-store.md)를 봅니다.
+자세한 저장 계약과 한계는 [`docs/run-history-store.md`](docs/run-history-store.md)를 봅니다. PGHD 데이터 관리 정책은 [`docs/pghd-data-management.md`](docs/pghd-data-management.md)를 봅니다.
 
 #### Supabase store
 
@@ -332,8 +332,10 @@ RUN_STORE_SUPABASE_TABLE=run_log_runs
 
 주의:
 - `SUPABASE_SERVICE_ROLE_KEY`는 서버 환경변수로만 설정하고 브라우저에 노출하지 않습니다.
-- DB schema는 `supabase/migrations/20260622014705_create_run_store.sql`을 Supabase SQL editor 또는 CLI로 적용합니다.
+- DB schema는 `supabase/migrations/`의 run store migration들을 Supabase SQL editor 또는 CLI로 적용합니다.
 - `public.run_log_runs`는 RLS enabled 상태입니다. 현재 앱은 server-side service role 접근을 전제로 합니다.
+- `run_log_weekly_summaries` view는 대시보드 주간 추세 조회용입니다.
+- `RUN_STORE_MAX_RAW_BYTES` 기본값은 `65536`이고 큰 raw payload는 저장 전에 거절됩니다.
 - 로컬 검증은 `scripts/smoke_supabase_run_store.mjs`로 실행합니다.
 
 ### `GET /api/strava/weekly-report`
