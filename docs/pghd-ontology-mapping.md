@@ -58,6 +58,7 @@ In short: data lands as PGHD in `run_log_runs`; it becomes a physio workflow act
 - `GET /api/bridge/contract` exposes `dataClassification.category = "PGHD"` and a compact `ontologyMapping` block for bridge clients.
 - `POST /api/run-log/promote-to-activity-session` is the current boundary-crossing endpoint from provider PGHD into physio workflow records.
 - If a future FHIR export is needed, generate FHIR Bundles from `run_log_runs`/`activity_sessions` rather than making FHIR the internal write model too early.
+- For the current `moai_web` table boundary audit, see [`pghd-table-boundary-audit.md`](pghd-table-boundary-audit.md).
 
 ## Sources
 
