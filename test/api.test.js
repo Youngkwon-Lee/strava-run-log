@@ -992,6 +992,110 @@ test('run-log weekly summaries reads Supabase view with filters', async () => {
   assert.equal(fetchMock.mock.callCount(), 1);
 });
 
+test('run-log timeline requires scoped client filter', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/timeline.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, 'invalid request');
+  assert.match(res.body.details.join('\n'), /subject_person_id, user_id, or pghd_connection_id is required/);
+});
+
+test('run-log timeline returns runs with linked activity session details', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/timeline.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const sessionId = '22222222-2222-4222-8222-222222222222';
+  const connectionId = '33333333-3333-4333-8333-333333333333';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.apple-health/);
+      assert.match(href, /limit=10/);
+      return Response.json([
+        {
+          source: 'apple-health',
+          external_id: 'apple-001',
+          user_id: 'youngkwon',
+          name: 'Apple Health Run',
+          start_date: '2026-06-22T01:00:00Z',
+          distance_meters: 5120,
+          moving_time_sec: 1910,
+          pace_sec_per_km: 373,
+          average_heartrate: 148,
+          average_cadence: 172,
+          subject_person_id: subjectPersonId,
+          pghd_connection_id: connectionId,
+          activity_session_id: sessionId,
+          linked_at: '2026-06-22T01:10:00Z',
+          data_classification: 'PGHD',
+          raw: {
+            pace: '6:13/km',
+            userId: 'youngkwon'
+          }
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/activity_sessions?')) {
+      assert.match(href, /id=in\.%2822222222-2222-4222-8222-222222222222%29/);
+      return Response.json([
+        {
+          id: sessionId,
+          activity_type: 'competition',
+          source: 'apple_health',
+          status: 'completed',
+          performed_at: '2026-06-22T01:00:00Z',
+          duration_seconds: 1910,
+          has_timeseries: false,
+          notes: 'Linked run'
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health',
+      limit: '10'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 1);
+  assert.equal(res.body.timeline[0].promoted, true);
+  assert.equal(res.body.timeline[0].metrics.distanceKm, 5.12);
+  assert.equal(res.body.timeline[0].session.activityType, 'competition');
+  assert.equal(fetchMock.mock.callCount(), 2);
+});
+
 test('PGHD connections requires admin auth', async () => {
   withEnv({ RUN_LOG_ADMIN_TOKEN: 'admin-secret' });
   const { default: handler } = await importFresh('../api/pghd/connections.js');

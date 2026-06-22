@@ -179,6 +179,7 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 - `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
 - `POST /api/run-log/promote-to-activity-session`: 저장된 러닝을 Kinnero `activity_sessions`로 연결
 - `GET /api/run-log/weekly-summaries`: Supabase weekly PGHD summary view 조회
+- `GET /api/run-log/timeline`: client/person 기준 run history와 `activity_sessions` 연결 상태 조회
 - `GET/POST /api/pghd/connections`: provider 계정과 physio app person/client 매핑 관리
 - `POST /api/import/run-file`: GPX/TCX 파일을 저장된 러닝으로 import
 

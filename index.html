@@ -143,6 +143,13 @@
             <div class="pghd-summary-grid" id="pghd-summary-grid">
               <div class="pghd-empty-state">아직 조회된 PGHD 요약이 없습니다.</div>
             </div>
+            <div class="card-title-bar" style="margin-top: 18px;">
+              <h2>클라이언트 타임라인</h2>
+              <span class="badge info">run/session link</span>
+            </div>
+            <div class="pghd-summary-grid" id="pghd-timeline-grid">
+              <div class="pghd-empty-state">아직 조회된 타임라인이 없습니다.</div>
+            </div>
           </div>
           
           <!-- Recent Runs List Card -->
@@ -317,6 +324,10 @@
             <span>GET /api/run-log/weekly-summaries</span>
             <span class="api-method-badge get">GET</span>
           </span>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>GET /api/run-log/timeline</span>
+            <span class="api-method-badge get">GET</span>
+          </span>
           <a href="/api/strava/connect" class="api-endpoint-item" target="_blank">
             <span>GET /api/strava/connect</span>
             <span class="api-method-badge get">GET</span>
@@ -362,6 +373,7 @@
       const pghdLimitInput = document.getElementById('pghd-limit');
       const pghdStatus = document.getElementById('pghd-status');
       const pghdSummaryGrid = document.getElementById('pghd-summary-grid');
+      const pghdTimelineGrid = document.getElementById('pghd-timeline-grid');
       const btnLoadPghd = document.getElementById('btn-load-pghd');
       const btnClearPghdToken = document.getElementById('btn-clear-pghd-token');
       
@@ -826,6 +838,16 @@
         return Number.isFinite(value) && value > 0 ? `${formatSecToMinSec(value)}/km` : '-';
       }
 
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[char]));
+      }
+
       function renderPghdSummaries(summaries) {
         if (!summaries?.length) {
           pghdSummaryGrid.innerHTML = '<div class="pghd-empty-state">조건에 맞는 주간 요약이 없습니다.</div>';
@@ -850,6 +872,38 @@
         `).join('');
       }
 
+      function renderPghdTimeline(items) {
+        if (!items?.length) {
+          pghdTimelineGrid.innerHTML = '<div class="pghd-empty-state">조건에 맞는 타임라인 기록이 없습니다.</div>';
+          return;
+        }
+
+        pghdTimelineGrid.innerHTML = items.map((item) => {
+          const date = item.startedAt
+            ? new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.startedAt))
+            : '-';
+          const metrics = item.metrics || {};
+          const session = item.session || {};
+          return `
+            <div class="pghd-week-card">
+              <div class="pghd-week-header">
+                <span>${date}</span>
+                <span class="badge ${item.promoted ? 'primary' : 'warning'}">${item.promoted ? 'session linked' : 'run only'}</span>
+              </div>
+              <h3 style="font-size: 0.95rem; margin: 6px 0;">${escapeHtml(item.name || '-')}</h3>
+              <div class="pghd-week-metrics">
+                <div><span>${metrics.distanceKm ?? '-'}</span><small>km</small></div>
+                <div><span>${metrics.movingTimeSec ? formatDuration(metrics.movingTimeSec) : '-'}</span><small>운동시간</small></div>
+                <div><span>${metrics.pace || '-'}</span><small>페이스</small></div>
+                <div><span>${metrics.averageHeartrate ? `${Math.round(metrics.averageHeartrate)} bpm` : '-'}</span><small>평균 HR</small></div>
+                <div><span>${escapeHtml(session.activityType || '-')}</span><small>세션 유형</small></div>
+                <div><span>${escapeHtml(item.source || '-')}</span><small>소스</small></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
       async function loadPghdSummaries() {
         const token = pghdTokenInput.value.trim();
         const subjectPersonId = pghdSubjectInput.value.trim();
@@ -858,6 +912,11 @@
 
         if (!token) {
           pghdStatus.textContent = '관리 토큰이 필요합니다.';
+          pghdStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+        if (!subjectPersonId) {
+          pghdStatus.textContent = '타임라인 조회에는 클라이언트 person id가 필요합니다.';
           pghdStatus.style.color = 'var(--color-alert)';
           return;
         }
@@ -870,22 +929,33 @@
         if (source) params.set('source', source);
 
         btnLoadPghd.disabled = true;
-        pghdStatus.textContent = 'PGHD 주간 요약을 불러오는 중...';
+        pghdStatus.textContent = 'PGHD 주간 요약과 타임라인을 불러오는 중...';
         pghdStatus.style.color = 'var(--text-secondary)';
 
         try {
-          const res = await fetch(`/api/run-log/weekly-summaries?${params.toString()}`, {
-            headers: { authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (!res.ok || !data.ok) throw new Error(data.error || `request failed (${res.status})`);
-          renderPghdSummaries(data.summaries || []);
-          pghdStatus.textContent = `${data.count || 0}개 주간 요약을 표시했습니다.`;
+          const timelineParams = new URLSearchParams(params);
+          timelineParams.set('limit', '20');
+          const [summaryRes, timelineRes] = await Promise.all([
+            fetch(`/api/run-log/weekly-summaries?${params.toString()}`, {
+              headers: { authorization: `Bearer ${token}` }
+            }),
+            fetch(`/api/run-log/timeline?${timelineParams.toString()}`, {
+              headers: { authorization: `Bearer ${token}` }
+            })
+          ]);
+          const summaryData = await summaryRes.json();
+          const timelineData = await timelineRes.json();
+          if (!summaryRes.ok || !summaryData.ok) throw new Error(summaryData.error || `summary request failed (${summaryRes.status})`);
+          if (!timelineRes.ok || !timelineData.ok) throw new Error(timelineData.error || `timeline request failed (${timelineRes.status})`);
+          renderPghdSummaries(summaryData.summaries || []);
+          renderPghdTimeline(timelineData.timeline || []);
+          pghdStatus.textContent = `${summaryData.count || 0}개 주간 요약, ${timelineData.count || 0}개 타임라인 기록을 표시했습니다.`;
           pghdStatus.style.color = 'var(--color-primary)';
         } catch (err) {
-          pghdStatus.textContent = `PGHD 요약 조회 실패: ${err.message}`;
+          pghdStatus.textContent = `PGHD 조회 실패: ${err.message}`;
           pghdStatus.style.color = 'var(--color-alert)';
           renderPghdSummaries([]);
+          renderPghdTimeline([]);
         } finally {
           btnLoadPghd.disabled = false;
         }

@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import appleHealthIngestHandler from '../api/apple-health/ingest.js';
 import pghdConnectionsHandler from '../api/pghd/connections.js';
 import promoteToActivitySessionHandler from '../api/run-log/promote-to-activity-session.js';
+import timelineHandler from '../api/run-log/timeline.js';
 import weeklySummariesHandler from '../api/run-log/weekly-summaries.js';
 import { supabaseFetch } from '../lib/supabase-rest.js';
 
@@ -294,6 +295,20 @@ async function main() {
     context.activitySessionId = promoted.activitySessionId;
     if (!context.activitySessionId) throw new Error('promotion did not return activitySessionId');
 
+    const timeline = await callHandler(timelineHandler, {
+      method: 'GET',
+      url: '/api/run-log/timeline',
+      headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+      query: {
+        subject_person_id: storedRun.subject_person_id,
+        source: 'apple-health',
+        limit: '10'
+      },
+      body: {}
+    });
+    const timelineFound = timeline.timeline.some((item) => item.externalId === payload.external_run_id && item.promoted);
+    if (!timelineFound) throw new Error('timeline did not include the promoted smoke Apple Health run');
+
     const cleanupErrors = await cleanup(context);
     if (cleanupErrors.length) throw new Error(`cleanup failed: ${cleanupErrors.join(' | ')}`);
 
@@ -304,6 +319,7 @@ async function main() {
         'apple-health ingest stored run',
         'weekly summary found run',
         'activity session promoted',
+        'client timeline found promoted run',
         'smoke rows cleaned up'
       ],
       evidence: {
