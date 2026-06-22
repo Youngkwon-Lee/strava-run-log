@@ -113,6 +113,10 @@ test('bridge contract exposes Apple Health and LiveRun payload contract', async 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
   assert.equal(res.body.contractVersion, '2026-06-22');
+  assert.equal(res.body.dataClassification.category, 'PGHD');
+  assert.equal(res.body.dataClassification.storageBoundary.runLogRuns, 'provider-originated PGHD staging and normalized run history');
+  assert.equal(res.body.ontologyMapping.fhir.heartRate, 'Observation code=http://loinc.org|8867-4 Heart rate');
+  assert.equal(res.body.ontologyMapping.openMHealth.pace, 'omh:pace');
   assert.equal(res.body.endpoints.appleHealthIngest.url, 'https://example.test/api/apple-health/ingest');
   assert.equal(res.body.endpoints.appleHealthIngest.requiredFields.external_run_id, 'string, stable idempotency key from the mobile app');
   assert.equal(res.body.endpoints.liveMetrics.url, 'https://example.test/api/live/metrics');

@@ -8,6 +8,8 @@
 
 For now, `run_log_runs` should remain the raw/normalized provider history table. Selected rows can later be linked or promoted into `activity_sessions`.
 
+In PGHD terms, `run_log_runs` is the provider-originated PGHD staging layer and `activity_sessions` is the professional workflow layer after person/client mapping. See [`pghd-ontology-mapping.md`](pghd-ontology-mapping.md).
+
 ## Existing Relevant Tables
 
 - `public.activity_sessions`

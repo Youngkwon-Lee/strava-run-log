@@ -68,6 +68,8 @@ The durable boundary should be:
 
 See [`physio-app-integration.md`](physio-app-integration.md).
 
+For healthcare/rehab terminology, this provider-originated data is treated as PGHD before it is attached to a clinical workflow. See [`pghd-ontology-mapping.md`](pghd-ontology-mapping.md).
+
 ## Product Positioning
 
 Short version:
