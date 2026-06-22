@@ -29,6 +29,8 @@ running, strava, analytics, discord-bot, social-media
 
 자세한 방향성은 [`docs/product-direction.md`](docs/product-direction.md)를 봅니다.
 
+physio_app 연동용 API 계약은 [`docs/physio-app-api-contract.md`](docs/physio-app-api-contract.md)를 봅니다.
+
 ---
 
 ## Setup (Detailed)

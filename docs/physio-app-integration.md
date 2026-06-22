@@ -10,6 +10,8 @@ For now, `run_log_runs` should remain the raw/normalized provider history table.
 
 In PGHD terms, `run_log_runs` is the provider-originated PGHD staging layer and `activity_sessions` is the professional workflow layer after person/client mapping. See [`pghd-ontology-mapping.md`](pghd-ontology-mapping.md).
 
+The API contract that physio_app should consume is fixed in [`physio-app-api-contract.md`](physio-app-api-contract.md).
+
 ## Existing Relevant Tables
 
 - `public.activity_sessions`
@@ -96,6 +98,14 @@ Body:
 ```
 
 Only `source` and `external_id` are always required. `subject_person_id` is required only when the run cannot be resolved through `pghd_connections`. The endpoint is idempotent for already-linked runs: if `activity_session_id` exists, it returns the existing id instead of creating a duplicate session.
+
+Related read endpoints:
+
+- `GET /api/run-log/weekly-summaries`
+- `GET /api/run-log/timeline`
+- `GET/POST /api/pghd/connections`
+
+See [`physio-app-api-contract.md`](physio-app-api-contract.md) for exact auth, query, response, and error shapes.
 
 ## Data Volume Guidance
 
