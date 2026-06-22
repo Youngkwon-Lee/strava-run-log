@@ -621,6 +621,114 @@ test('stored activities include Apple Health ingests without Strava auth', async
   assert.equal(weeklyRes.body.runs[0].source, 'apple-health');
 });
 
+test('run-log promotion requires admin auth', async () => {
+  withEnv({ RUN_LOG_ADMIN_TOKEN: 'admin-secret' });
+  const { default: handler } = await importFresh('../api/run-log/promote-to-activity-session.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'unauthorized' });
+});
+
+test('run-log promotion creates an activity session and links the run', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/promote-to-activity-session.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const activitySessionId = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    const href = String(url);
+    if (href.includes('/rest/v1/run_log_runs?') && !options.method) {
+      assert.match(href, /source=eq\.apple-health/);
+      assert.match(href, /external_id=eq\.apple-001/);
+      return Response.json([
+        {
+          source: 'apple-health',
+          external_id: 'apple-001',
+          user_id: 'youngkwon',
+          name: 'Morning Run',
+          start_date: '2026-06-22T01:00:00Z',
+          distance_meters: 4020,
+          moving_time_sec: 1510,
+          pace_sec_per_km: 376,
+          average_heartrate: 142,
+          average_cadence: 171,
+          raw: {
+            distanceKm: 4.02,
+            pace: '6:16/km',
+            totalElevationGainMeters: 12.5
+          }
+        }
+      ]);
+    }
+
+    if (href.endsWith('/rest/v1/activity_sessions') && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      assert.equal(body.activity_type, 'other');
+      assert.equal(body.source, 'apple_health');
+      assert.equal(body.status, 'completed');
+      assert.equal(body.performed_at, '2026-06-22T01:00:00Z');
+      assert.equal(body.duration_seconds, 1510);
+      assert.equal(body.metrics.distance_meters, 4020);
+      assert.equal(body.exercise_log.provider_external_id, 'apple-001');
+      return Response.json([{ id: activitySessionId }]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?') && options.method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      assert.equal(body.activity_session_id, activitySessionId);
+      assert.ok(body.linked_at);
+      return Response.json([
+        {
+          source: 'apple-health',
+          external_id: 'apple-001',
+          subject_person_id: subjectPersonId,
+          activity_session_id: activitySessionId
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      source: 'apple-health',
+      external_id: 'apple-001',
+      subject_person_id: subjectPersonId
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.activitySessionId, activitySessionId);
+  assert.equal(res.body.run.subjectPersonId, subjectPersonId);
+  assert.equal(fetchMock.mock.callCount(), 3);
+  assert.equal(calls[0].options.method, undefined);
+  assert.equal(calls[1].options.method, 'POST');
+  assert.equal(calls[2].options.method, 'PATCH');
+});
+
 test('strava connect redirects to OAuth and sets state cookie', async () => {
   withEnv({
     STRAVA_CLIENT_ID: '12345',

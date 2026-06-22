@@ -162,6 +162,7 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 - `GET /api/strava/callback`: Strava 승인 후 토큰 교환
 - `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
 - `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
+- `POST /api/run-log/promote-to-activity-session`: 저장된 러닝을 Kinnero `activity_sessions`로 연결
 
 서비스별 현재 전략:
 - Strava: OAuth 2.0 직접 연동 완료
@@ -296,6 +297,30 @@ RUN_STORE_SUPABASE_TABLE=run_log_runs
 ### `GET /api/strava/weekly-report`
 
 최근 7일 러닝을 WHO 기준과 함께 요약합니다. 이제 평균 페이스, 누적 상승고도, 평균 심박/케이던스, 최장 러닝, 개별 러닝 목록도 같이 반환합니다.
+
+### `POST /api/run-log/promote-to-activity-session`
+
+`run_log_runs`에 저장된 provider 러닝 기록을 Kinnero/moai_web의 `activity_sessions`로 승격하고, 생성된 `activity_sessions.id`를 다시 `run_log_runs.activity_session_id`에 기록합니다.
+
+인증:
+- `Authorization: Bearer <RUN_LOG_ADMIN_TOKEN>`
+- `RUN_LOG_ADMIN_TOKEN`이 없으면 `LIVE_METRICS_TOKEN` 사용
+
+필수 body:
+
+```json
+{
+  "source": "apple-health",
+  "external_id": "apple_health_...",
+  "subject_person_id": "11111111-1111-4111-8111-111111111111"
+}
+```
+
+선택 body:
+- `organization_id`
+- `org_client_profile_id`
+- `created_by`
+- `notes`
 
 ## Vercel webhook 배포 (실시간 감지)
 

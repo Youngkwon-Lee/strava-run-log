@@ -37,20 +37,19 @@ Use two layers:
 
 ## Future Columns
 
-When the integration needs identity mapping, add nullable columns to `run_log_runs`:
+Identity mapping columns on `run_log_runs`:
 
 ```sql
-alter table public.run_log_runs
-  add column if not exists subject_person_id uuid,
-  add column if not exists activity_session_id uuid;
+subject_person_id uuid
+organization_id uuid
+org_client_profile_id uuid
+activity_session_id uuid
+linked_at timestamptz
 ```
 
 Optional later fields:
 
-- `organization_id uuid`
-- `org_client_profile_id uuid`
 - `source_account_id uuid`
-- `linked_at timestamptz`
 
 Keep them nullable so standalone personal running logs continue to work.
 
@@ -71,6 +70,29 @@ Suggested flow for turning a stored run into a physio app activity:
    - `exercise_log = run_log_runs.raw`
    - `has_timeseries = false` unless route/stream storage is added
 4. Store the resulting `activity_sessions.id` back on `run_log_runs.activity_session_id`.
+
+Implemented endpoint:
+
+```http
+POST /api/run-log/promote-to-activity-session
+Authorization: Bearer <RUN_LOG_ADMIN_TOKEN or LIVE_METRICS_TOKEN>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "source": "apple-health",
+  "external_id": "apple_health_...",
+  "subject_person_id": "11111111-1111-4111-8111-111111111111",
+  "organization_id": "22222222-2222-4222-8222-222222222222",
+  "org_client_profile_id": "33333333-3333-4333-8333-333333333333",
+  "notes": "Imported from client Apple Health run history"
+}
+```
+
+Only `source`, `external_id`, and `subject_person_id` are required. The endpoint is idempotent for already-linked runs: if `activity_session_id` exists, it returns the existing id instead of creating a duplicate session.
 
 ## Data Volume Guidance
 

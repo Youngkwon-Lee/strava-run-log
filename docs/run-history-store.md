@@ -74,6 +74,11 @@ Typical fields:
 - `calories`
 - `deviceName`
 - `coaching`
+- `subjectPersonId`
+- `organizationId`
+- `orgClientProfileId`
+- `activitySessionId`
+- `linkedAt`
 - `storedAt`
 - `updatedAt`
 
