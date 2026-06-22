@@ -95,10 +95,13 @@ For production, set `RUN_STORE_BACKEND=supabase` or keep the `lib/run-store.js` 
 Apply:
 
 ```bash
-supabase db push
+supabase link --workdir /Users/youngkwon/Desktop/strava-run-log --project-ref <project-ref>
+supabase db push --workdir /Users/youngkwon/Desktop/strava-run-log
 ```
 
 or paste `supabase/migrations/20260622014705_create_run_store.sql` into the Supabase SQL editor.
+
+Use `--workdir` from this repo because other Supabase projects may be linked elsewhere on the same machine.
 
 Required server-side environment variables:
 
