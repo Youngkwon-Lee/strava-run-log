@@ -62,6 +62,12 @@ The durable boundary should be:
 4. Make Apple Health import repeatable and idempotent from mobile.
 5. Improve post-run coaching with recent-history context.
 
+## Physio App Integration
+
+`moai_web` already has workflow tables such as `activity_sessions`. The run-log integration should keep provider-originated data in `run_log_runs` first, then link selected records into physio app workflows when a person/care context is known.
+
+See [`physio-app-integration.md`](physio-app-integration.md).
+
 ## Product Positioning
 
 Short version:
