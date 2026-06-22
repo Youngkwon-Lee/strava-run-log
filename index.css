@@ -685,6 +685,83 @@ header .nav-container {
   white-space: nowrap;
 }
 
+.pghd-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pghd-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pghd-empty-state {
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.pghd-week-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-card-solid);
+  padding: 14px;
+}
+
+.pghd-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.pghd-week-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pghd-week-metrics div {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 8px;
+  background-color: var(--bg-color);
+}
+
+.pghd-week-metrics span,
+.pghd-week-metrics small {
+  display: block;
+}
+
+.pghd-week-metrics span {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.pghd-week-metrics small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .pghd-filter-grid,
+  .pghd-week-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Activity logs / Records list style */
 .records-container {
   display: flex;

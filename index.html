@@ -98,6 +98,52 @@
               </div>
             </div>
           </div>
+
+          <!-- Professional / Client PGHD Summary Card -->
+          <div class="card">
+            <div class="card-title-bar">
+              <h2>클라이언트 PGHD 요약</h2>
+              <span class="badge info">Supabase weekly view</span>
+            </div>
+            <div class="pghd-filter-grid">
+              <div class="form-group">
+                <label for="pghd-token">관리 토큰</label>
+                <input id="pghd-token" type="password" placeholder="RUN_LOG_ADMIN_TOKEN 또는 LIVE_METRICS_TOKEN">
+              </div>
+              <div class="form-group">
+                <label for="pghd-subject">클라이언트 person id</label>
+                <input id="pghd-subject" type="text" placeholder="subject_person_id UUID">
+              </div>
+              <div class="form-group">
+                <label for="pghd-source">데이터 소스</label>
+                <select id="pghd-source">
+                  <option value="">전체</option>
+                  <option value="apple-health">Apple Health</option>
+                  <option value="strava">Strava</option>
+                  <option value="garmin">Garmin</option>
+                  <option value="file-import">파일 업로드</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="pghd-limit">조회 주 수</label>
+                <select id="pghd-limit">
+                  <option value="12">12주</option>
+                  <option value="26">26주</option>
+                  <option value="52">52주</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex gap-md" style="margin-top: 12px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-load-pghd" type="button">PGHD 요약 조회</button>
+              <button class="btn btn-secondary" id="btn-clear-pghd-token" type="button">토큰 지우기</button>
+            </div>
+            <p class="text-muted" id="pghd-status" style="font-size: 0.82rem; margin-top: 10px;">
+              클라이언트 person id와 관리 토큰을 입력하면 주간 거리, 운동시간, 심박 추세를 조회합니다.
+            </p>
+            <div class="pghd-summary-grid" id="pghd-summary-grid">
+              <div class="pghd-empty-state">아직 조회된 PGHD 요약이 없습니다.</div>
+            </div>
+          </div>
           
           <!-- Recent Runs List Card -->
           <div class="card">
@@ -267,6 +313,10 @@
             <span>GET /api/strava/weekly-report</span>
             <span class="api-method-badge get">GET</span>
           </a>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>GET /api/run-log/weekly-summaries</span>
+            <span class="api-method-badge get">GET</span>
+          </span>
           <a href="/api/strava/connect" class="api-endpoint-item" target="_blank">
             <span>GET /api/strava/connect</span>
             <span class="api-method-badge get">GET</span>
@@ -306,6 +356,14 @@
       const trendPace = document.getElementById('trend-pace');
       const trendHr = document.getElementById('trend-hr');
       const trendConsistency = document.getElementById('trend-consistency');
+      const pghdTokenInput = document.getElementById('pghd-token');
+      const pghdSubjectInput = document.getElementById('pghd-subject');
+      const pghdSourceInput = document.getElementById('pghd-source');
+      const pghdLimitInput = document.getElementById('pghd-limit');
+      const pghdStatus = document.getElementById('pghd-status');
+      const pghdSummaryGrid = document.getElementById('pghd-summary-grid');
+      const btnLoadPghd = document.getElementById('btn-load-pghd');
+      const btnClearPghdToken = document.getElementById('btn-clear-pghd-token');
       
       // Runs elements
       const runsList = document.getElementById('runs-list');
@@ -336,6 +394,7 @@
       const watchHr = document.getElementById('watch-hr');
       const watchDuration = document.getElementById('watch-duration');
       const watchCoaching = document.getElementById('watch-coaching');
+      const watchTime = document.getElementById('watch-time');
       const equalizerAnim = document.getElementById('equalizer-anim');
       const btnForceDiscord = document.getElementById('btn-force-discord');
       const simStatusMsg = document.getElementById('sim-status-msg');
@@ -347,6 +406,9 @@
         father: { target_pace_sec: 580, max_hr: 150, hr_sustained_sec: 90, coaching_frequency_sec: 120, readiness_score: 68 },
         custom: { target_pace_sec: 370, max_hr: 175, hr_sustained_sec: 120, coaching_frequency_sec: 90, readiness_score: 80 }
       };
+
+      pghdTokenInput.value = localStorage.getItem('RUN_LOG_ADMIN_TOKEN') || '';
+      pghdSubjectInput.value = localStorage.getItem('PGHD_SUBJECT_PERSON_ID') || '';
 
       // Mock Activities for beautiful visual presentation when Strava not connected
       const mockActivities = [
@@ -759,6 +821,76 @@
         trendConsistency.textContent = recent.length ? `${weeks.size}/4주` : '-';
       }
 
+      function formatWeeklyPace(seconds) {
+        const value = Number(seconds);
+        return Number.isFinite(value) && value > 0 ? `${formatSecToMinSec(value)}/km` : '-';
+      }
+
+      function renderPghdSummaries(summaries) {
+        if (!summaries?.length) {
+          pghdSummaryGrid.innerHTML = '<div class="pghd-empty-state">조건에 맞는 주간 요약이 없습니다.</div>';
+          return;
+        }
+
+        pghdSummaryGrid.innerHTML = summaries.map((item) => `
+          <div class="pghd-week-card">
+            <div class="pghd-week-header">
+              <span>${item.week_start || '-'}</span>
+              <span class="badge ${item.source ? 'info' : ''}">${item.source || 'all'}</span>
+            </div>
+            <div class="pghd-week-metrics">
+              <div><span>${item.run_count ?? 0}</span><small>회</small></div>
+              <div><span>${item.total_km ?? 0}</span><small>km</small></div>
+              <div><span>${item.moderate_minutes ?? 0}</span><small>분</small></div>
+              <div><span>${formatWeeklyPace(item.average_pace_sec_per_km)}</span><small>평균 페이스</small></div>
+              <div><span>${item.average_heartrate ? `${item.average_heartrate} bpm` : '-'}</span><small>평균 HR</small></div>
+              <div><span>${item.average_cadence ? `${item.average_cadence} spm` : '-'}</span><small>케이던스</small></div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      async function loadPghdSummaries() {
+        const token = pghdTokenInput.value.trim();
+        const subjectPersonId = pghdSubjectInput.value.trim();
+        const source = pghdSourceInput.value.trim();
+        const limit = pghdLimitInput.value;
+
+        if (!token) {
+          pghdStatus.textContent = '관리 토큰이 필요합니다.';
+          pghdStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+
+        localStorage.setItem('RUN_LOG_ADMIN_TOKEN', token);
+        if (subjectPersonId) localStorage.setItem('PGHD_SUBJECT_PERSON_ID', subjectPersonId);
+
+        const params = new URLSearchParams({ limit });
+        if (subjectPersonId) params.set('subject_person_id', subjectPersonId);
+        if (source) params.set('source', source);
+
+        btnLoadPghd.disabled = true;
+        pghdStatus.textContent = 'PGHD 주간 요약을 불러오는 중...';
+        pghdStatus.style.color = 'var(--text-secondary)';
+
+        try {
+          const res = await fetch(`/api/run-log/weekly-summaries?${params.toString()}`, {
+            headers: { authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) throw new Error(data.error || `request failed (${res.status})`);
+          renderPghdSummaries(data.summaries || []);
+          pghdStatus.textContent = `${data.count || 0}개 주간 요약을 표시했습니다.`;
+          pghdStatus.style.color = 'var(--color-primary)';
+        } catch (err) {
+          pghdStatus.textContent = `PGHD 요약 조회 실패: ${err.message}`;
+          pghdStatus.style.color = 'var(--color-alert)';
+          renderPghdSummaries([]);
+        } finally {
+          btnLoadPghd.disabled = false;
+        }
+      }
+
       async function loadStoredDashboardData() {
         const [activitiesRes, weeklyRes] = await Promise.all([
           fetch('/api/strava/activities?source=stored&days=90&limit=5').then(r => r.json()),
@@ -851,6 +983,14 @@
         await loadDashboard();
         btnRefreshRuns.disabled = false;
         btnRefreshRuns.textContent = '기록 새로고침';
+      });
+
+      btnLoadPghd.addEventListener('click', loadPghdSummaries);
+      btnClearPghdToken.addEventListener('click', () => {
+        localStorage.removeItem('RUN_LOG_ADMIN_TOKEN');
+        pghdTokenInput.value = '';
+        pghdStatus.textContent = '저장된 관리 토큰을 지웠습니다.';
+        pghdStatus.style.color = 'var(--text-secondary)';
       });
 
       // Watch Time clock updater
