@@ -157,18 +157,21 @@ curl -H "Authorization: Bearer $STRAVA_ACCESS_TOKEN" \
 배포된 서비스에서 사용자는 `/settings.html`에서 연동 가능한 러닝 앱을 확인하고 Strava를 직접 연결할 수 있습니다.
 
 - `GET /settings.html`: 연결 설정 페이지
-- `GET /api/integrations/providers`: Strava, Apple Health, Garmin, Nike Run Club 연동 상태/방식
+- `GET /api/integrations/providers`: Apple Health, Strava, Garmin, Apple Watch LiveRun, GPX/TCX 파일, Nike Run Club 연동 상태/방식
 - `GET /api/strava/connect`: Strava OAuth 승인 시작
 - `GET /api/strava/callback`: Strava 승인 후 토큰 교환
 - `GET /api/strava/me`: 현재 브라우저의 연결 상태 확인
 - `POST /api/strava/disconnect`: 현재 브라우저의 연결 해제
 - `POST /api/run-log/promote-to-activity-session`: 저장된 러닝을 Kinnero `activity_sessions`로 연결
+- `POST /api/import/run-file`: GPX/TCX 파일을 저장된 러닝으로 import
 
 서비스별 현재 전략:
 - Strava: OAuth 2.0 직접 연동 완료
 - Apple Health: 웹 OAuth가 아니라 iOS HealthKit 권한이 필요하므로 iPhone/Watch bridge 앱에서 연결. 백엔드 ingest API 준비 완료
 - Garmin: Garmin Health API는 Developer Program 승인 후 연결
-- Nike Run Club: 공식 공개 API가 없어 Nike→Strava 동기화 또는 스크린샷/파일 import 경로 사용
+- Apple Watch LiveRun: Watch/iPhone bridge가 `POST /api/live/metrics`로 실시간 telemetry push
+- GPX/TCX 파일: `/settings.html`에서 파일 업로드 가능. FIT은 바이너리 파서 연결 후 활성화
+- Nike Run Club: 공식 공개 API가 없어 Nike→Strava 동기화 또는 파일 import 경로 사용
 
 사용자별 토큰은 서버 DB 없이 암호화된 HttpOnly 쿠키에 저장됩니다. 운영 환경에는 쿠키 암호화를 위해 `STRAVA_SESSION_SECRET`을 추가로 설정하는 것을 권장합니다. 값이 없으면 `STRAVA_CLIENT_SECRET`을 사용합니다.
 
@@ -181,6 +184,27 @@ strava-run-log.vercel.app
 ```
 
 주의: 새 Strava 앱은 기본적으로 Athlete Capacity 1(Single Player Mode)입니다. 실제 여러 사용자에게 공개하려면 Strava Developer Program review를 통과해서 capacity를 늘려야 합니다.
+
+### `POST /api/import/run-file`
+
+GPX/TCX 파일을 기존 run store에 저장합니다. `/settings.html`의 `GPX/FIT/TCX 업로드` 버튼은 현재 GPX/TCX 텍스트 파일을 이 endpoint로 보냅니다.
+
+인증:
+- `IMPORT_API_TOKEN`이 설정된 경우 `Authorization: Bearer <IMPORT_API_TOKEN>` 또는 `x-import-token` 필요
+- 설정하지 않으면 인증 없이 동작하므로 공개 배포에서는 토큰 설정을 권장
+- `/settings.html` 업로드 UI는 `401` 응답을 받으면 토큰을 입력받아 브라우저 `localStorage`에 저장한 뒤 재시도합니다.
+
+예시:
+
+```json
+{
+  "filename": "morning.gpx",
+  "format": "gpx",
+  "content": "<?xml version=\"1.0\"?><gpx>...</gpx>"
+}
+```
+
+응답은 `source: "file-import"`로 저장된 기록 요약과 저장 결과를 반환합니다. FIT 요청은 현재 `415`로 거절됩니다.
 
 ### `POST /api/apple-health/ingest`
 

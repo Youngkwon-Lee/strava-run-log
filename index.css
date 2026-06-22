@@ -819,6 +819,16 @@ header .nav-container {
   white-space: normal;
 }
 
+.provider-file-input {
+  display: none;
+}
+
+.provider-upload-status {
+  min-height: 18px;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
 @media (max-width: 520px) {
   .provider-actions {
     grid-template-columns: 1fr;

@@ -100,6 +100,7 @@
       const providersEl = document.getElementById('providers');
       const refreshButton = document.getElementById('refresh');
       const disconnectButton = document.getElementById('disconnect');
+      let providerCache = [];
 
       // Theme toggle action
       themeToggleBtn.addEventListener('click', () => {
@@ -201,6 +202,13 @@
       }
 
       function renderProviderAction(provider) {
+        if (provider.actionType === 'file_upload') {
+          return `
+            <label class="btn btn-primary provider-action" for="upload-${provider.id}">${provider.actionLabel}</label>
+            <input id="upload-${provider.id}" class="provider-file-input" type="file" accept="${provider.acceptedFileTypes || ''}" data-provider-id="${provider.id}">
+          `;
+        }
+
         if (provider.actionUrl) {
           return `<a class="btn btn-primary provider-action" href="${provider.actionUrl}">${provider.actionLabel}</a>`;
         }
@@ -234,6 +242,7 @@
               <p class="provider-desc">${provider.summary}</p>
               <p class="provider-caveat">${provider.caveat}</p>
               ${provider.apiUrl ? `<p style="font-size: 0.8rem; margin: 4px 0;"><code style="background-color: var(--bg-color); border: 1px solid var(--border-color);">${provider.apiUrl}</code></p>` : ''}
+              ${provider.actionType === 'file_upload' ? `<p class="provider-upload-status text-muted" id="upload-status-${provider.id}"></p>` : ''}
               <div class="provider-actions">
                 ${renderProviderAction(provider)}
                 ${renderSecondaryAction(provider)}
@@ -241,12 +250,80 @@
             </div>
           `)
           .join('');
+
+        providersEl.querySelectorAll('.provider-file-input').forEach((input) => {
+          input.addEventListener('change', handleProviderFileUpload);
+        });
+      }
+
+      function fileFormatFromName(filename) {
+        return String(filename || '').split('.').pop()?.toLowerCase() || '';
+      }
+
+      function readFileForUpload(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('file read failed'));
+          reader.readAsText(file);
+        });
+      }
+
+      async function postRunFile(provider, payload, token) {
+        const headers = { 'content-type': 'application/json' };
+        if (token) headers.authorization = `Bearer ${token}`;
+
+        return fetch(provider.apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        }).then((r) => r.json().then((body) => ({ ok: r.ok, status: r.status, body })));
+      }
+
+      async function handleProviderFileUpload(event) {
+        const input = event.currentTarget;
+        const file = input.files?.[0];
+        if (!file) return;
+
+        const provider = providerCache.find((item) => item.id === input.dataset.providerId);
+        const status = document.getElementById(`upload-status-${input.dataset.providerId}`);
+        const format = fileFormatFromName(file.name);
+        status.textContent = `${file.name} 업로드 중...`;
+
+        try {
+          const content = await readFileForUpload(file);
+          const payload = {
+            filename: file.name,
+            format,
+            content
+          };
+          let token = localStorage.getItem('import-api-token') || '';
+          let res = await postRunFile(provider, payload, token);
+
+          if (res.status === 401) {
+            token = window.prompt('IMPORT_API_TOKEN을 입력하세요.') || '';
+            if (token) {
+              localStorage.setItem('import-api-token', token);
+              res = await postRunFile(provider, payload, token);
+            }
+          }
+
+          if (!res.ok) throw new Error(res.body?.error || `upload failed (${res.status})`);
+
+          status.textContent = `${res.body.summary.distanceKm || '-'}km 기록을 저장했습니다.`;
+          await loadRecords();
+        } catch (e) {
+          status.textContent = `업로드 실패: ${e.message}`;
+        } finally {
+          input.value = '';
+        }
       }
 
       async function loadProviders() {
         try {
           const data = await fetch('/api/integrations/providers').then((r) => r.json());
           if (!data.ok) throw new Error(data.error || 'providers failed');
+          providerCache = data.providers;
           renderProviders(data.providers);
         } catch (e) {
           providersEl.innerHTML = `<p class="text-muted">연동 정보를 불러오지 못했습니다. (${e.message})</p>`;

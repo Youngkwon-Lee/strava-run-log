@@ -572,6 +572,79 @@ test('apple health ingest rejects invalid signature', async () => {
   assert.deepEqual(res.body, { error: 'invalid signature' });
 });
 
+test('run file import stores GPX runs', async () => {
+  await withTempRunStore();
+  const { default: handler } = await importFresh('../api/import/run-file.js');
+  const { readStoredRuns } = await importFresh('../lib/run-store.js');
+
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test">
+  <trk>
+    <name>Morning test run</name>
+    <trkseg>
+      <trkpt lat="37.5665" lon="126.9780">
+        <ele>20</ele>
+        <time>2026-06-22T06:00:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>142</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.5675" lon="126.9890">
+        <ele>24</ele>
+        <time>2026-06-22T06:05:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>150</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.5685" lon="127.0000">
+        <ele>28</ele>
+        <time>2026-06-22T06:10:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>156</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {
+      filename: 'morning.gpx',
+      format: 'gpx',
+      content: gpx
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.source, 'file-import');
+  assert.equal(res.body.summary.name, 'Morning test run');
+  assert.equal(res.body.summary.fileFormat, 'gpx');
+  assert.equal(res.body.summary.routePointCount, 3);
+  assert.ok(res.body.summary.distanceKm > 1.8);
+
+  const runs = await readStoredRuns();
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].source, 'file-import');
+  assert.equal(runs[0].name, 'Morning test run');
+  assert.equal(runs[0].routePointCount, 3);
+});
+
+test('run file import rejects FIT until binary parser is enabled', async () => {
+  const { default: handler } = await importFresh('../api/import/run-file.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: {},
+    query: {},
+    body: {
+      filename: 'run.fit',
+      format: 'fit',
+      contentBase64: Buffer.from('FITDATA').toString('base64')
+    }
+  });
+
+  assert.equal(res.statusCode, 415);
+  assert.match(res.body.error, /FIT import requires/);
+});
+
 test('stored activities include Apple Health ingests without Strava auth', async () => {
   await withTempRunStore();
   withEnv({
