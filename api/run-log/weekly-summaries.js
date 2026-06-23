@@ -1,3 +1,5 @@
+import { parseBoundedLimit } from '../../lib/http-query.js';
+import { buildEmptyResponse } from '../../lib/pghd-empty-response.js';
 import { assertSimpleIdentifier, supabaseFetch } from '../../lib/supabase-rest.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,7 +22,7 @@ function isAuthorized(req) {
 }
 
 function parseLimit(value) {
-  return Math.min(260, Math.max(1, Number(value || 52)));
+  return parseBoundedLimit(value, { defaultValue: 52, max: 260 });
 }
 
 function addUuidFilter(params, query, field) {
@@ -73,7 +75,8 @@ export default async function handler(req, res) {
       ok: true,
       source: 'run-log-weekly-summaries',
       summaries,
-      count: summaries.length
+      count: summaries.length,
+      ...(summaries.length ? {} : buildEmptyResponse('no_weekly_activity', req.query))
     });
   } catch (e) {
     return res.status(e.statusCode || 500).json({ error: e.message });

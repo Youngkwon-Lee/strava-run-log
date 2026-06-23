@@ -45,6 +45,42 @@
       <div class="grid grid-cols-2">
         <!-- LEFT COLUMN: Dashboard Overview & Recent Runs -->
         <div class="flex flex-col gap-lg">
+
+          <!-- PGHD Review Brief -->
+          <div class="card pghd-command-card" id="pghd-review-brief">
+            <div class="card-title-bar">
+              <div>
+                <h2>PGHD Review Brief</h2>
+                <p class="pghd-brief-subtitle">이번 encounter에서 먼저 확인할 Human State와 근거 신호입니다.</p>
+              </div>
+              <span class="badge info" id="pghd-brief-mode">대기</span>
+            </div>
+            <div class="pghd-brief-grid" id="pghd-brief-grid">
+              <div class="pghd-brief-metric">
+                <span class="pghd-brief-label">Training load</span>
+                <strong id="pghd-brief-load">-</strong>
+                <small id="pghd-brief-load-meta">상태 신호 조회 전</small>
+              </div>
+              <div class="pghd-brief-metric">
+                <span class="pghd-brief-label">Fatigue</span>
+                <strong id="pghd-brief-fatigue">-</strong>
+                <small id="pghd-brief-fatigue-meta">상태 신호 조회 전</small>
+              </div>
+              <div class="pghd-brief-metric">
+                <span class="pghd-brief-label">Adherence</span>
+                <strong id="pghd-brief-adherence">-</strong>
+                <small id="pghd-brief-adherence-meta">상태 신호 조회 전</small>
+              </div>
+              <div class="pghd-brief-metric">
+                <span class="pghd-brief-label">Review priority</span>
+                <strong id="pghd-brief-priority">-</strong>
+                <small id="pghd-brief-priority-meta">insight 조회 전</small>
+              </div>
+            </div>
+            <div class="pghd-brief-note" id="pghd-brief-note">
+              클라이언트 person id와 관리 토큰을 입력한 뒤 PGHD 요약을 조회하면, raw run list보다 먼저 임상 검토용 상태 요약이 표시됩니다.
+            </div>
+          </div>
           
           <!-- WHO guidelines progress card -->
           <div class="card" id="who-card">
@@ -102,8 +138,8 @@
           <!-- Professional / Client PGHD Summary Card -->
           <div class="card">
             <div class="card-title-bar">
-              <h2>클라이언트 PGHD 요약</h2>
-              <span class="badge info">Supabase weekly view</span>
+              <h2>클라이언트 PGHD 상태</h2>
+              <span class="badge info">Activity Event → Human State</span>
             </div>
             <div class="pghd-filter-grid">
               <div class="form-group">
@@ -132,23 +168,83 @@
                   <option value="52">52주</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label for="pghd-encounter">Encounter id</label>
+                <input id="pghd-encounter" type="text" placeholder="encounter_id UUID">
+              </div>
+              <div class="form-group">
+                <label for="pghd-organization">Organization id</label>
+                <input id="pghd-organization" type="text" placeholder="organization_id UUID">
+              </div>
+              <div class="form-group">
+                <label for="pghd-provider">Provider person id</label>
+                <input id="pghd-provider" type="text" placeholder="provider_person_id UUID">
+              </div>
             </div>
             <div class="flex gap-md" style="margin-top: 12px; flex-wrap: wrap;">
               <button class="btn btn-primary" id="btn-load-pghd" type="button">PGHD 요약 조회</button>
+              <button class="btn btn-secondary" id="btn-save-pghd-state" type="button">상태 신호 저장</button>
               <button class="btn btn-secondary" id="btn-clear-pghd-token" type="button">토큰 지우기</button>
             </div>
             <p class="text-muted" id="pghd-status" style="font-size: 0.82rem; margin-top: 10px;">
-              클라이언트 person id와 관리 토큰을 입력하면 주간 거리, 운동시간, 심박 추세를 조회합니다.
+              클라이언트 person id와 관리 토큰을 입력하면 현재 상태, 근거 활동, 주간 추세를 함께 조회합니다.
             </p>
+            <div class="card-title-bar" style="margin-top: 18px;">
+              <h2>PGHD 운영 점검</h2>
+              <span class="badge info">preflight</span>
+            </div>
+            <div class="pghd-preflight-grid" id="pghd-preflight-grid">
+              <div class="pghd-empty-state">
+                <strong>Preflight 대기</strong>
+                <span>조회 실행 시 connection, ingest, weekly summary, state materialization 상태를 점검합니다.</span>
+              </div>
+            </div>
+            <div class="card-title-bar" style="margin-top: 18px;">
+              <h2>현재 Human State</h2>
+              <span class="badge primary">state snapshot</span>
+            </div>
+            <div class="pghd-state-overview" id="pghd-state-overview">
+              <div class="pghd-empty-state">
+                <strong>현재 Human State 없음</strong>
+                <span>아직 표시할 training load, fatigue, adherence 상태가 없습니다.</span>
+                <small>PGHD 요약 조회를 실행하세요.</small>
+              </div>
+            </div>
+            <div class="pghd-summary-grid" id="pghd-state-grid">
+              <div class="pghd-empty-state">
+                <strong>상태 신호 없음</strong>
+                <span>클라이언트 person id와 관리 토큰을 입력하면 상태 신호를 조회합니다.</span>
+              </div>
+            </div>
+            <div class="card-title-bar" style="margin-top: 18px;">
+              <h2>Encounter Insight</h2>
+              <span class="badge warning">review context</span>
+            </div>
+            <div class="pghd-summary-grid" id="pghd-insight-grid">
+              <div class="pghd-empty-state">
+                <strong>Encounter insight 없음</strong>
+                <span>상태 신호 조회 후 검토 우선순위가 표시됩니다.</span>
+              </div>
+            </div>
+            <div class="card-title-bar" style="margin-top: 18px;">
+              <h2>주간 활동 근거</h2>
+              <span class="badge info">weekly summary</span>
+            </div>
             <div class="pghd-summary-grid" id="pghd-summary-grid">
-              <div class="pghd-empty-state">아직 조회된 PGHD 요약이 없습니다.</div>
+              <div class="pghd-empty-state">
+                <strong>주간 활동 근거 없음</strong>
+                <span>PGHD 요약 조회 전입니다.</span>
+              </div>
             </div>
             <div class="card-title-bar" style="margin-top: 18px;">
               <h2>클라이언트 타임라인</h2>
               <span class="badge info">run/session link</span>
             </div>
             <div class="pghd-summary-grid" id="pghd-timeline-grid">
-              <div class="pghd-empty-state">아직 조회된 타임라인이 없습니다.</div>
+              <div class="pghd-empty-state">
+                <strong>타임라인 기록 없음</strong>
+                <span>연결된 run/session 기록이 아직 표시되지 않았습니다.</span>
+              </div>
             </div>
           </div>
           
@@ -328,6 +424,22 @@
             <span>GET /api/run-log/timeline</span>
             <span class="api-method-badge get">GET</span>
           </span>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>GET/POST /api/run-log/state-snapshots</span>
+            <span class="api-method-badge get-post">GET/POST</span>
+          </span>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>GET /api/run-log/encounter-insights</span>
+            <span class="api-method-badge get">GET</span>
+          </span>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>GET /api/run-log/preflight</span>
+            <span class="api-method-badge get">GET</span>
+          </span>
+          <span class="api-endpoint-item" style="cursor: not-allowed; opacity: 0.8;">
+            <span>POST /api/run-log/encounter-note-drafts</span>
+            <span class="api-method-badge post">POST</span>
+          </span>
           <a href="/api/strava/connect" class="api-endpoint-item" target="_blank">
             <span>GET /api/strava/connect</span>
             <span class="api-method-badge get">GET</span>
@@ -371,11 +483,32 @@
       const pghdSubjectInput = document.getElementById('pghd-subject');
       const pghdSourceInput = document.getElementById('pghd-source');
       const pghdLimitInput = document.getElementById('pghd-limit');
+      const pghdEncounterInput = document.getElementById('pghd-encounter');
+      const pghdOrganizationInput = document.getElementById('pghd-organization');
+      const pghdProviderInput = document.getElementById('pghd-provider');
       const pghdStatus = document.getElementById('pghd-status');
+      const pghdBriefMode = document.getElementById('pghd-brief-mode');
+      const pghdBriefLoad = document.getElementById('pghd-brief-load');
+      const pghdBriefLoadMeta = document.getElementById('pghd-brief-load-meta');
+      const pghdBriefFatigue = document.getElementById('pghd-brief-fatigue');
+      const pghdBriefFatigueMeta = document.getElementById('pghd-brief-fatigue-meta');
+      const pghdBriefAdherence = document.getElementById('pghd-brief-adherence');
+      const pghdBriefAdherenceMeta = document.getElementById('pghd-brief-adherence-meta');
+      const pghdBriefPriority = document.getElementById('pghd-brief-priority');
+      const pghdBriefPriorityMeta = document.getElementById('pghd-brief-priority-meta');
+      const pghdBriefNote = document.getElementById('pghd-brief-note');
       const pghdSummaryGrid = document.getElementById('pghd-summary-grid');
+      const pghdPreflightGrid = document.getElementById('pghd-preflight-grid');
+      const pghdStateOverview = document.getElementById('pghd-state-overview');
+      const pghdStateGrid = document.getElementById('pghd-state-grid');
+      const pghdInsightGrid = document.getElementById('pghd-insight-grid');
       const pghdTimelineGrid = document.getElementById('pghd-timeline-grid');
       const btnLoadPghd = document.getElementById('btn-load-pghd');
+      const btnSavePghdState = document.getElementById('btn-save-pghd-state');
       const btnClearPghdToken = document.getElementById('btn-clear-pghd-token');
+      let pghdLatestInsights = [];
+      let pghdLatestStateSnapshots = [];
+      let pghdLatestStateMode = null;
       
       // Runs elements
       const runsList = document.getElementById('runs-list');
@@ -421,6 +554,9 @@
 
       pghdTokenInput.value = localStorage.getItem('RUN_LOG_ADMIN_TOKEN') || '';
       pghdSubjectInput.value = localStorage.getItem('PGHD_SUBJECT_PERSON_ID') || '';
+      pghdEncounterInput.value = localStorage.getItem('PGHD_ENCOUNTER_ID') || '';
+      pghdOrganizationInput.value = localStorage.getItem('PGHD_ORGANIZATION_ID') || '';
+      pghdProviderInput.value = localStorage.getItem('PGHD_PROVIDER_PERSON_ID') || '';
 
       // Mock Activities for beautiful visual presentation when Strava not connected
       const mockActivities = [
@@ -848,9 +984,75 @@
         }[char]));
       }
 
-      function renderPghdSummaries(summaries) {
+      function pghdEmptyBody(fallback, data) {
+        return data?.emptyMessage || fallback;
+      }
+
+      function pghdEmptyAction(fallback, data) {
+        const hints = Array.isArray(data?.operatorHints) ? data.operatorHints.filter(Boolean) : [];
+        return hints.length ? hints.slice(0, 2).join(' ') : fallback;
+      }
+
+      function preflightTone(status) {
+        return ({
+          ok: 'primary',
+          warning: 'warning',
+          error: 'alert'
+        })[status] || 'info';
+      }
+
+      function formatPreflightLabel(name) {
+        return ({
+          physio_person_context: 'Physio person',
+          connection_mapping: 'Connection',
+          activity_ingest: 'Ingest',
+          weekly_summary: 'Weekly',
+          state_materialization: 'State',
+          preflight_query: 'Query'
+        })[name] || name || 'Check';
+      }
+
+      function renderPghdPreflight(data) {
+        const checks = Array.isArray(data?.checks) ? data.checks : [];
+        if (!checks.length) {
+          pghdPreflightGrid.innerHTML = renderPghdEmptyState(
+            'Preflight 대기',
+            '조회 실행 시 connection, ingest, weekly summary, state materialization 상태를 점검합니다.',
+            ''
+          );
+          return;
+        }
+
+        pghdPreflightGrid.innerHTML = checks.map((item) => {
+          const tone = preflightTone(item.status);
+          const hints = Array.isArray(item.operatorHints) ? item.operatorHints.filter(Boolean) : [];
+          const latest = item.latest || {};
+          const latestMeta = latest.start_date || latest.week_start || latest.calculated_at || latest.last_sync_at || latest.updated_at || '';
+          return `
+            <div class="pghd-preflight-card ${tone}">
+              <div class="pghd-week-header">
+                <span>${escapeHtml(formatPreflightLabel(item.name))}</span>
+                <span class="badge ${tone}">${escapeHtml(item.status || 'unknown')}</span>
+              </div>
+              <p>${escapeHtml(item.message || '-')}</p>
+              <div class="pghd-preflight-meta">
+                <span>${Number.isFinite(Number(item.count)) ? `${item.count} rows` : 'count -'}</span>
+                <span>${escapeHtml(latest.provider || latest.source || latest.provider_source || '')}</span>
+                <span>${escapeHtml(latestMeta ? String(latestMeta).slice(0, 10) : '')}</span>
+              </div>
+              ${hints.length ? `<small>${escapeHtml(hints.slice(0, 2).join(' '))}</small>` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderPghdSummaries(summaries, data) {
         if (!summaries?.length) {
-          pghdSummaryGrid.innerHTML = '<div class="pghd-empty-state">조건에 맞는 주간 요약이 없습니다.</div>';
+          pghdSummaryGrid.innerHTML = renderPghdEmptyState(
+            '주간 활동 근거 없음',
+            pghdEmptyBody('선택한 클라이언트와 소스에 해당하는 최근 주간 요약이 없습니다.', data),
+            pghdEmptyAction('person id 매핑, provider source, 최근 activity ingest 여부를 확인하세요.', data)
+          );
           return;
         }
 
@@ -872,9 +1074,566 @@
         `).join('');
       }
 
-      function renderPghdTimeline(items) {
+      function formatStateLabel(stateType) {
+        return ({
+          training_load: 'Training load',
+          adherence: 'Adherence',
+          fatigue: 'Fatigue',
+          recovery: 'Recovery',
+          injury_risk: 'Injury risk',
+          fitness: 'Fitness'
+        })[stateType] || stateType || '-';
+      }
+
+      function formatStateValue(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${Math.round(number * 100)}%` : '-';
+      }
+
+      function stateTone(stateType, value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return 'info';
+        if (stateType === 'fatigue' || stateType === 'injury_risk') {
+          if (number >= 0.75) return 'alert';
+          if (number >= 0.55) return 'warning';
+          return 'primary';
+        }
+        if (number >= 0.7) return 'primary';
+        if (number >= 0.45) return 'warning';
+        return 'alert';
+      }
+
+      function formatDataQuality(value) {
+        return ({
+          supported: '충분',
+          partial: '부분',
+          limited: '제한'
+        })[value] || '-';
+      }
+
+      function formatInsufficientDataReason(reason) {
+        return ({
+          missing_prior_baseline: '이전 주 기준 부족',
+          short_history: '기록 기간 짧음',
+          limited_load_comparison: '부하 비교 제한',
+          no_runs_this_week: '이번 주 운동 없음',
+          missing_weekly_distance: '거리 누락',
+          missing_moving_time: '운동 시간 누락'
+        })[reason] || reason;
+      }
+
+      function formatWeeklyDelta(meta) {
+        if (!meta || meta.totalKmDelta === undefined) return '-';
+        const delta = Number(meta.totalKmDelta);
+        if (!Number.isFinite(delta)) return '-';
+        const prefix = delta > 0 ? '+' : '';
+        const trend = meta.volumeTrend ? ` (${meta.volumeTrend})` : '';
+        return `${prefix}${delta}km${trend}`;
+      }
+
+      function formatTraceId(value) {
+        const text = String(value || '');
+        if (!text) return '-';
+        return text.length > 18 ? `${text.slice(0, 8)}...${text.slice(-6)}` : text;
+      }
+
+      function formatEvidenceDate(value) {
+        const time = Date.parse(value || '');
+        if (!Number.isFinite(time)) return '';
+        return new Intl.DateTimeFormat('ko-KR', {
+          month: 'short',
+          day: 'numeric'
+        }).format(new Date(time));
+      }
+
+      function formatEvidenceDistance(activity) {
+        const km = Number(activity?.distanceKm ?? (Number(activity?.distanceMeters) / 1000));
+        return Number.isFinite(km) && km > 0 ? `${km.toFixed(2)}km` : '';
+      }
+
+      function formatEvidencePace(activity) {
+        if (activity?.pace) return activity.pace;
+        const pace = Number(activity?.paceSecPerKm);
+        if (!Number.isFinite(pace) || pace <= 0) return '';
+        const minutes = Math.floor(pace / 60);
+        const seconds = Math.round(pace % 60).toString().padStart(2, '0');
+        return `${minutes}:${seconds}/km`;
+      }
+
+      function formatSourceActivityEvidence(activity) {
+        const parts = [
+          formatEvidenceDate(activity?.startedAt || activity?.startDateLocal),
+          activity?.name || activity?.source || 'activity',
+          formatEvidenceDistance(activity)
+        ].filter(Boolean);
+        const pace = formatEvidencePace(activity);
+        return `${parts.join(' ')}${pace ? `, avg pace ${pace}` : ''}`.trim();
+      }
+
+      function renderInsightSourceActivities(activities) {
+        const list = Array.isArray(activities) ? activities.filter(Boolean).slice(0, 3) : [];
+        if (!list.length) {
+          return '<p class="pghd-data-quality-note">근거: 연결된 source activity id가 없습니다.</p>';
+        }
+
+        return `
+          <div class="pghd-insight-evidence" aria-label="PGHD evidence source activities">
+            <strong>근거 활동 기록</strong>
+            <div class="pghd-source-evidence-list">
+              ${list.map((activity) => `
+                <div class="pghd-source-evidence-row">
+                  <div class="pghd-source-evidence-main">
+                    <strong>근거: ${escapeHtml(formatSourceActivityEvidence(activity) || formatTraceId(activity.runLogRunId || activity.pghdActivityEventId))}</strong>
+                    <small>
+                      ${[
+                        activity.source,
+                        activity.externalId ? `external ${activity.externalId}` : '',
+                        activity.pghdActivityEventId ? `event ${formatTraceId(activity.pghdActivityEventId)}` : ''
+                      ].filter(Boolean).map(escapeHtml).join(' · ')}
+                    </small>
+                  </div>
+                  <code title="${escapeHtml(activity.pghdActivityEventId || activity.runLogRunId || '')}">
+                    ${escapeHtml(formatTraceId(activity.pghdActivityEventId || activity.runLogRunId))}
+                  </code>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      function buildPghdEvidenceSection(insight) {
+        const activities = Array.isArray(insight?.sourceActivities) ? insight.sourceActivities.filter(Boolean).slice(0, 3) : [];
+        if (!activities.length) return '';
+        const lines = [
+          '',
+          'PGHD evidence:',
+          ...activities.map((activity) => {
+            const label = formatSourceActivityEvidence(activity) || activity.name || activity.source || 'source activity';
+            const eventId = activity.pghdActivityEventId ? `; event ${activity.pghdActivityEventId}` : '';
+            const runId = activity.runLogRunId ? `; run ${activity.runLogRunId}` : '';
+            return `- ${label}${eventId}${runId}`;
+          }),
+          'Review note: Confirm these PGHD activity records before accepting this draft into the encounter note.'
+        ];
+        return lines.join('\n');
+      }
+
+      function noteDraftWithEvidence(insight, noteDraft) {
+        const draft = noteDraft || `${insight?.title || 'Insight'}\n\n${insight?.summary || ''}`;
+        if (/^PGHD evidence:/mi.test(draft)) return draft;
+        return `${draft}${buildPghdEvidenceSection(insight)}`.trim();
+      }
+
+      function renderStateInputs(inputs) {
+        const list = Array.isArray(inputs) ? inputs.filter(Boolean).slice(0, 5) : [];
+        if (!list.length) {
+          return '<p class="pghd-data-quality-note">근거 활동: 이 상태 신호에는 연결된 source activity id가 없습니다.</p>';
+        }
+
+        const hiddenCount = Array.isArray(inputs) && inputs.length > list.length
+          ? inputs.length - list.length
+          : 0;
+        return `
+          <details class="pghd-source-evidence">
+            <summary>근거 활동 ${inputs.length}개 보기</summary>
+            <div class="pghd-source-evidence-list">
+              ${list.map((input) => `
+                <div class="pghd-source-evidence-row">
+                  <div class="pghd-source-evidence-main">
+                    <strong>${escapeHtml(input.activity?.name || formatTraceId(input.runLogRunId))}</strong>
+                    <small>
+                      ${[
+                        formatEvidenceDate(input.activity?.startedAt || input.activity?.startDateLocal),
+                        input.activity?.source,
+                        formatEvidenceDistance(input.activity)
+                      ].filter(Boolean).map(escapeHtml).join(' · ')}
+                    </small>
+                    <code title="${escapeHtml(input.runLogRunId || '')}">${escapeHtml(formatTraceId(input.runLogRunId))}</code>
+                  </div>
+                  <span>weight ${Number.isFinite(Number(input.weight)) ? Number(input.weight).toFixed(2) : '-'}</span>
+                </div>
+              `).join('')}
+              ${hiddenCount ? `<div class="pghd-source-evidence-more">외 ${hiddenCount}개 source activity id</div>` : ''}
+            </div>
+          </details>
+        `;
+      }
+
+      function latestSnapshotsByType(snapshots) {
+        const byType = new Map();
+        for (const item of snapshots || []) {
+          const key = item.stateType || item.state_type || 'unknown';
+          const normalized = {
+            ...item,
+            stateType: item.stateType || item.state_type,
+            windowStart: item.windowStart || item.window_start,
+            calculatedAt: item.calculatedAt || item.calculated_at,
+            providerSource: item.providerSource || item.provider_source
+          };
+          const current = byType.get(key);
+          const currentTime = Date.parse(current?.calculatedAt || current?.windowStart || '');
+          const itemTime = Date.parse(normalized.calculatedAt || normalized.windowStart || '');
+          if (!current || (Number.isFinite(itemTime) && (!Number.isFinite(currentTime) || itemTime > currentTime))) {
+            byType.set(key, normalized);
+          }
+        }
+        return [...byType.values()].sort((a, b) => {
+          const order = ['training_load', 'adherence', 'fatigue', 'recovery', 'injury_risk', 'fitness'];
+          const aIndex = order.indexOf(a.stateType);
+          const bIndex = order.indexOf(b.stateType);
+          return (aIndex === -1 ? order.length : aIndex) - (bIndex === -1 ? order.length : bIndex);
+        });
+      }
+
+      function latestSnapshotForType(snapshots, stateType) {
+        return latestSnapshotsByType(snapshots).find((item) => item.stateType === stateType) || null;
+      }
+
+      function pghdBriefMeta(item) {
+        if (!item) return '상태 신호 없음';
+        const meta = item.metadata || {};
+        const source = item.providerSource || item.source || 'state';
+        const quality = formatDataQuality(meta.dataQuality);
+        const delta = formatWeeklyDelta(meta);
+        return [source, quality, delta !== '-' ? delta : null].filter(Boolean).join(' · ');
+      }
+
+      function highestPriorityInsight(insights) {
+        const severityRank = { alert: 3, warning: 2, info: 1 };
+        return [...(insights || [])].sort((a, b) => {
+          const bRank = severityRank[b.severity] || 0;
+          const aRank = severityRank[a.severity] || 0;
+          if (bRank !== aRank) return bRank - aRank;
+          return Number(b.confidence || 0) - Number(a.confidence || 0);
+        })[0] || null;
+      }
+
+      function renderPghdReviewBrief(snapshots, insights, mode) {
+        const trainingLoad = latestSnapshotForType(snapshots, 'training_load');
+        const fatigue = latestSnapshotForType(snapshots, 'fatigue');
+        const adherence = latestSnapshotForType(snapshots, 'adherence');
+        const priority = highestPriorityInsight(insights);
+        const priorityTone = insightTone(priority?.severity);
+        const hasState = Boolean(trainingLoad || fatigue || adherence);
+
+        pghdBriefMode.textContent = mode === 'persisted' ? '저장 상태' : mode === 'derived' ? '계산 상태' : '대기';
+        pghdBriefMode.className = `badge ${mode ? 'primary' : 'info'}`;
+        pghdBriefLoad.textContent = formatStateValue(trainingLoad?.value);
+        pghdBriefLoadMeta.textContent = pghdBriefMeta(trainingLoad);
+        pghdBriefFatigue.textContent = formatStateValue(fatigue?.value);
+        pghdBriefFatigueMeta.textContent = pghdBriefMeta(fatigue);
+        pghdBriefAdherence.textContent = formatStateValue(adherence?.value);
+        pghdBriefAdherenceMeta.textContent = pghdBriefMeta(adherence);
+        pghdBriefPriority.textContent = priority ? (priority.severity || 'info') : '-';
+        pghdBriefPriority.className = priority ? `pghd-brief-priority ${priorityTone}` : '';
+        pghdBriefPriorityMeta.textContent = priority
+          ? `${priority.title || priority.insightType || 'Insight'} · ${priority.providerSource || 'source'}`
+          : 'insight 없음';
+        pghdBriefNote.textContent = priority?.summary
+          || (hasState
+            ? '상태 신호는 조회됐지만 우선 검토 insight는 없습니다. 현재 수치와 주간 변화, 데이터 품질을 함께 확인하세요.'
+            : '클라이언트 person id와 관리 토큰을 입력한 뒤 PGHD 요약을 조회하면, raw run list보다 먼저 임상 검토용 상태 요약이 표시됩니다.');
+      }
+
+      function renderPghdEmptyState(title, body, action) {
+        return `
+          <div class="pghd-empty-state">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(body)}</span>
+            ${action ? `<small>${escapeHtml(action)}</small>` : ''}
+          </div>
+        `;
+      }
+
+      function renderPghdStateOverview(snapshots) {
+        const current = latestSnapshotsByType(snapshots);
+        if (!current.length) {
+          pghdStateOverview.innerHTML = renderPghdEmptyState(
+            '현재 Human State 없음',
+            '아직 표시할 training load, fatigue, adherence 상태가 없습니다.',
+            'PGHD 요약 조회를 실행하거나 상태 신호 저장 후 다시 확인하세요.'
+          );
+          return;
+        }
+
+        pghdStateOverview.innerHTML = current.slice(0, 6).map((item) => {
+          const tone = stateTone(item.stateType, item.value);
+          const meta = item.metadata || {};
+          const inputCount = Array.isArray(item.inputs) ? item.inputs.length : 0;
+          return `
+            <div class="pghd-state-tile ${tone}">
+              <div class="pghd-state-tile-header">
+                <span>${escapeHtml(formatStateLabel(item.stateType))}</span>
+                <span class="badge ${tone}">${formatStateValue(item.value)}</span>
+              </div>
+              <div class="pghd-state-tile-meta">
+                <span>${escapeHtml(item.providerSource || item.source || 'state')}</span>
+                <span>${inputCount}개 근거 · ${escapeHtml(formatDataQuality(meta.dataQuality))}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderPghdStateSignals(snapshots, data) {
+        pghdLatestStateSnapshots = Array.isArray(snapshots) ? snapshots : [];
+        if (!snapshots?.length) {
+          renderPghdStateOverview([]);
+          renderPghdReviewBrief([], pghdLatestInsights, null);
+          pghdStateGrid.innerHTML = renderPghdEmptyState(
+            '상태 신호 없음',
+            pghdEmptyBody('선택한 클라이언트에서 계산 가능한 Human State snapshot을 찾지 못했습니다.', data),
+            pghdEmptyAction('최근 1-2주 이상의 run history와 subject_person_id 연결을 확인하세요.', data)
+          );
+          return;
+        }
+
+        renderPghdStateOverview(snapshots);
+        renderPghdReviewBrief(pghdLatestStateSnapshots, pghdLatestInsights, pghdLatestStateMode);
+        pghdStateGrid.innerHTML = snapshots.map((item) => {
+          const meta = item.metadata || {};
+          const confidence = Number(item.confidence);
+          const inputCount = Array.isArray(item.inputs) ? item.inputs.length : 0;
+          const tone = stateTone(item.stateType, item.value);
+          const dataQuality = formatDataQuality(meta.dataQuality);
+          const reasons = Array.isArray(meta.insufficientDataReasons)
+            ? meta.insufficientDataReasons.map(formatInsufficientDataReason).join(', ')
+            : '';
+          return `
+            <div class="pghd-week-card">
+              <div class="pghd-week-header">
+                <span>${escapeHtml(formatStateLabel(item.stateType))}</span>
+                <span class="badge ${tone}">${escapeHtml(item.providerSource || item.source || 'state')}</span>
+              </div>
+              <div class="pghd-week-metrics">
+                <div><span>${formatStateValue(item.value)}</span><small>값</small></div>
+                <div><span>${Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '-'}</span><small>신뢰도</small></div>
+                <div><span>${item.windowStart ? String(item.windowStart).slice(0, 10) : '-'}</span><small>기간 시작</small></div>
+                <div><span>${escapeHtml(item.source || '-')}</span><small>계산 소스</small></div>
+                <div><span>${inputCount}</span><small>근거 활동</small></div>
+                <div><span>${escapeHtml(dataQuality)}</span><small>데이터 품질</small></div>
+                <div><span>${escapeHtml(formatWeeklyDelta(meta))}</span><small>주간 변화</small></div>
+                <div><span>${meta.runCount ?? '-'}</span><small>운동 횟수</small></div>
+                <div><span>${meta.totalKm ?? '-'}</span><small>주간 km</small></div>
+                <div><span>${meta.loadRatio ?? '-'}</span><small>부하 비율</small></div>
+              </div>
+              ${reasons ? `<p class="pghd-data-quality-note">제한 사유: ${escapeHtml(reasons)}</p>` : ''}
+              ${renderStateInputs(item.inputs)}
+            </div>
+          `;
+        }).join('');
+      }
+
+      function insightTone(severity) {
+        return ({
+          alert: 'alert',
+          warning: 'warning',
+          info: 'info'
+        })[severity] || 'info';
+      }
+
+      function renderInsightList(items) {
+        const list = Array.isArray(items) ? items.filter(Boolean).slice(0, 3) : [];
+        if (!list.length) return '';
+        return `<ul class="pghd-insight-list">${list.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      }
+
+      function renderPghdEncounterInsights(insights) {
+        pghdLatestInsights = Array.isArray(insights) ? insights : [];
+        renderPghdReviewBrief(pghdLatestStateSnapshots, pghdLatestInsights, pghdLatestStateMode);
+        if (!insights?.length) {
+          pghdInsightGrid.innerHTML = renderPghdEmptyState(
+            'Encounter insight 없음',
+            '검토 우선순위로 올릴 fatigue/load/adherence 변화가 아직 없습니다.',
+            '상태 신호가 정상이어도 임상 note 초안은 전문가 검토 전까지 생성하지 않습니다.'
+          );
+          return;
+        }
+
+        pghdInsightGrid.innerHTML = insights.map((item, index) => {
+          const tone = insightTone(item.severity);
+          const confidence = Number(item.confidence);
+          const noteDraft = noteDraftWithEvidence(item, item.noteDraft);
+          return `
+            <div class="pghd-week-card pghd-insight-card ${tone}" data-insight-index="${index}">
+              <div class="pghd-week-header">
+                <span>${escapeHtml(item.title || item.insightType || 'Insight')}</span>
+                <span class="badge ${tone}">${escapeHtml(item.severity || 'info')}</span>
+              </div>
+              <p class="pghd-insight-summary">${escapeHtml(item.summary || '-')}</p>
+              <div class="pghd-week-metrics">
+                <div><span>${escapeHtml(item.providerSource || '-')}</span><small>소스</small></div>
+                <div><span>${Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '-'}</span><small>신뢰도</small></div>
+                <div><span>${item.windowStart ? String(item.windowStart).slice(0, 10) : '-'}</span><small>기간 시작</small></div>
+              </div>
+              ${renderInsightList(item.evidence)}
+              ${renderInsightList(item.suggestedQuestions)}
+              ${renderInsightList(item.suggestedActions)}
+              ${renderInsightSourceActivities(item.sourceActivities)}
+              <div class="pghd-note-draft">
+                <div class="pghd-note-draft-header">
+                  <span>Encounter note draft</span>
+                  <span class="flex gap-md" style="flex-wrap: wrap;">
+                    <button class="btn btn-secondary btn-copy-note" type="button">초안 복사</button>
+                    <button class="btn btn-secondary btn-export-note" type="button">export row 생성</button>
+                  </span>
+                </div>
+                <textarea class="pghd-note-draft-editor" aria-label="Encounter note draft">${escapeHtml(noteDraft)}</textarea>
+                <div class="pghd-export-preview" hidden>
+                  <div class="pghd-note-draft-header">
+                    <span>Draft export preview</span>
+                    <button class="btn btn-secondary btn-copy-export" type="button">export JSON 복사</button>
+                  </div>
+                  <pre class="pghd-export-json"></pre>
+                  <div class="pghd-note-draft-header pghd-repository-preview-header">
+                    <span>PhysioApp repositoryParams</span>
+                    <button class="btn btn-secondary btn-copy-repository" type="button">upsert payload 복사</button>
+                  </div>
+                  <pre class="pghd-repository-json"></pre>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      async function copyTextToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      async function exportEncounterNoteDraft(card, button) {
+        const token = pghdTokenInput.value.trim();
+        const subjectPersonId = pghdSubjectInput.value.trim();
+        const encounterId = pghdEncounterInput.value.trim();
+        const organizationId = pghdOrganizationInput.value.trim();
+        const providerPersonId = pghdProviderInput.value.trim();
+        const index = Number(card?.dataset.insightIndex);
+        const insight = Number.isInteger(index) ? pghdLatestInsights[index] : null;
+        const editedNoteContent = card?.querySelector('.pghd-note-draft-editor')?.value || '';
+
+        if (!token) throw new Error('관리 토큰이 필요합니다.');
+        if (!subjectPersonId) throw new Error('클라이언트 person id가 필요합니다.');
+        if (!encounterId || !organizationId || !providerPersonId) {
+          throw new Error('Encounter id, Organization id, Provider person id가 필요합니다.');
+        }
+        if (!editedNoteContent.trim()) throw new Error('검토된 note draft가 비어 있습니다.');
+
+        localStorage.setItem('RUN_LOG_ADMIN_TOKEN', token);
+        localStorage.setItem('PGHD_SUBJECT_PERSON_ID', subjectPersonId);
+        localStorage.setItem('PGHD_ENCOUNTER_ID', encounterId);
+        localStorage.setItem('PGHD_ORGANIZATION_ID', organizationId);
+        localStorage.setItem('PGHD_PROVIDER_PERSON_ID', providerPersonId);
+
+        const res = await fetch('/api/run-log/encounter-note-drafts', {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            encounterId,
+            organizationId,
+            subjectPersonId,
+            providerPersonId,
+            noteFormat: 'wellness_note',
+            editedNoteContent,
+            insight
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const details = Array.isArray(data.details) ? ` ${data.details.join(' ')}` : '';
+          throw new Error(`${data.error || `draft export failed (${res.status})`}${details}`);
+        }
+
+        const exportJson = JSON.stringify(data.draftExport, null, 2);
+        const repositoryJson = JSON.stringify(data.draftExport?.repositoryParams || {}, null, 2);
+        await copyTextToClipboard(exportJson);
+        const preview = card?.querySelector('.pghd-export-preview');
+        const previewBody = preview?.querySelector('.pghd-export-json');
+        const repositoryBody = preview?.querySelector('.pghd-repository-json');
+        if (preview && previewBody && repositoryBody) {
+          preview.hidden = false;
+          previewBody.textContent = exportJson;
+          repositoryBody.textContent = repositoryJson;
+        }
+        button.textContent = 'export 복사됨';
+        pghdStatus.textContent = 'PhysioApp encounter_notes draft export row를 생성해 클립보드에 복사했습니다. PhysioApp에서 검토 후 저장하세요.';
+        pghdStatus.style.color = 'var(--color-primary)';
+      }
+
+      async function fetchPghdStateSignals(params, token) {
+        const persistedParams = new URLSearchParams(params);
+        persistedParams.set('limit', '12');
+        const persistedRes = await fetch(`/api/run-log/state-snapshots?${persistedParams.toString()}`, {
+          headers: { authorization: `Bearer ${token}` }
+        });
+        const persistedData = await persistedRes.json();
+
+        if (persistedRes.ok && persistedData.ok && (persistedData.snapshots || []).length) {
+          return { ...persistedData, stateMode: 'persisted' };
+        }
+
+        const derivedParams = new URLSearchParams(params);
+        derivedParams.set('derive', 'weekly');
+        derivedParams.set('limit', '12');
+        const derivedRes = await fetch(`/api/run-log/state-snapshots?${derivedParams.toString()}`, {
+          headers: { authorization: `Bearer ${token}` }
+        });
+        const derivedData = await derivedRes.json();
+        if (!derivedRes.ok || !derivedData.ok) {
+          throw new Error(derivedData.error || `state request failed (${derivedRes.status})`);
+        }
+        return { ...derivedData, stateMode: 'derived' };
+      }
+
+      async function fetchPghdEncounterInsights(params, token) {
+        const insightParams = new URLSearchParams(params);
+        insightParams.set('limit', '12');
+        const res = await fetch(`/api/run-log/encounter-insights?${insightParams.toString()}`, {
+          headers: { authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || `encounter insight request failed (${res.status})`);
+        }
+        return data;
+      }
+
+      async function fetchPghdPreflight(params, token) {
+        const preflightParams = new URLSearchParams(params);
+        preflightParams.set('limit', '5');
+        const res = await fetch(`/api/run-log/preflight?${preflightParams.toString()}`, {
+          headers: { authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || `preflight request failed (${res.status})`);
+        }
+        return data;
+      }
+
+      function renderPghdTimeline(items, data) {
         if (!items?.length) {
-          pghdTimelineGrid.innerHTML = '<div class="pghd-empty-state">조건에 맞는 타임라인 기록이 없습니다.</div>';
+          pghdTimelineGrid.innerHTML = renderPghdEmptyState(
+            '타임라인 기록 없음',
+            pghdEmptyBody('선택한 클라이언트와 소스에 연결된 run/session 기록이 없습니다.', data),
+            pghdEmptyAction('PGHD connection mapping 또는 provider ingest 상태를 먼저 확인하세요.', data)
+          );
           return;
         }
 
@@ -935,29 +1694,101 @@
         try {
           const timelineParams = new URLSearchParams(params);
           timelineParams.set('limit', '20');
-          const [summaryRes, timelineRes] = await Promise.all([
+          const [summaryRes, stateData, insightData, timelineRes, preflightData] = await Promise.all([
             fetch(`/api/run-log/weekly-summaries?${params.toString()}`, {
               headers: { authorization: `Bearer ${token}` }
             }),
+            fetchPghdStateSignals(params, token),
+            fetchPghdEncounterInsights(params, token),
             fetch(`/api/run-log/timeline?${timelineParams.toString()}`, {
               headers: { authorization: `Bearer ${token}` }
-            })
+            }),
+            fetchPghdPreflight(params, token)
           ]);
           const summaryData = await summaryRes.json();
           const timelineData = await timelineRes.json();
           if (!summaryRes.ok || !summaryData.ok) throw new Error(summaryData.error || `summary request failed (${summaryRes.status})`);
           if (!timelineRes.ok || !timelineData.ok) throw new Error(timelineData.error || `timeline request failed (${timelineRes.status})`);
-          renderPghdSummaries(summaryData.summaries || []);
-          renderPghdTimeline(timelineData.timeline || []);
-          pghdStatus.textContent = `${summaryData.count || 0}개 주간 요약, ${timelineData.count || 0}개 타임라인 기록을 표시했습니다.`;
+          pghdLatestStateMode = stateData.stateMode;
+          renderPghdSummaries(summaryData.summaries || [], summaryData);
+          renderPghdPreflight(preflightData);
+          renderPghdStateSignals(stateData.snapshots || [], stateData);
+          renderPghdEncounterInsights(insightData.insights || []);
+          renderPghdReviewBrief(stateData.snapshots || [], insightData.insights || [], stateData.stateMode);
+          renderPghdTimeline(timelineData.timeline || [], timelineData);
+          const stateMode = stateData.stateMode === 'persisted' ? '저장된' : '계산된';
+          pghdStatus.textContent = `${summaryData.count || 0}개 주간 요약, ${stateData.count || 0}개 ${stateMode} 상태 신호, ${insightData.count || 0}개 encounter insight, ${timelineData.count || 0}개 타임라인 기록을 표시했습니다.`;
           pghdStatus.style.color = 'var(--color-primary)';
         } catch (err) {
           pghdStatus.textContent = `PGHD 조회 실패: ${err.message}`;
           pghdStatus.style.color = 'var(--color-alert)';
           renderPghdSummaries([]);
+          renderPghdPreflight(null);
+          pghdLatestStateMode = null;
+          renderPghdStateSignals([]);
+          renderPghdEncounterInsights([]);
+          renderPghdReviewBrief([], [], null);
           renderPghdTimeline([]);
         } finally {
           btnLoadPghd.disabled = false;
+        }
+      }
+
+      async function savePghdStateSignals() {
+        const token = pghdTokenInput.value.trim();
+        const subjectPersonId = pghdSubjectInput.value.trim();
+        const source = pghdSourceInput.value.trim();
+        const limit = pghdLimitInput.value;
+
+        if (!token) {
+          pghdStatus.textContent = '관리 토큰이 필요합니다.';
+          pghdStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+        if (!subjectPersonId) {
+          pghdStatus.textContent = '상태 신호 저장에는 클라이언트 person id가 필요합니다.';
+          pghdStatus.style.color = 'var(--color-alert)';
+          return;
+        }
+
+        localStorage.setItem('RUN_LOG_ADMIN_TOKEN', token);
+        localStorage.setItem('PGHD_SUBJECT_PERSON_ID', subjectPersonId);
+
+        btnSavePghdState.disabled = true;
+        pghdStatus.textContent = '주간 요약 기반 상태 신호를 저장하는 중...';
+        pghdStatus.style.color = 'var(--text-secondary)';
+
+        try {
+          const res = await fetch('/api/run-log/state-snapshots', {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+              subject_person_id: subjectPersonId,
+              source: source || undefined,
+              derive: 'weekly',
+              limit: Number(limit || 12)
+            })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            const details = Array.isArray(data.details) ? ` ${data.details.join(' ')}` : '';
+            throw new Error(`${data.error || `state save failed (${res.status})`}${details}`);
+          }
+
+          pghdLatestStateMode = 'persisted';
+          renderPghdStateSignals(data.snapshots || []);
+          renderPghdEncounterInsights([]);
+          renderPghdReviewBrief(data.snapshots || [], [], 'persisted');
+          pghdStatus.textContent = `${data.count || 0}개 상태 신호를 저장했습니다.`;
+          pghdStatus.style.color = 'var(--color-primary)';
+        } catch (err) {
+          pghdStatus.textContent = `상태 신호 저장 실패: ${err.message}`;
+          pghdStatus.style.color = 'var(--color-alert)';
+        } finally {
+          btnSavePghdState.disabled = false;
         }
       }
 
@@ -1056,6 +1887,48 @@
       });
 
       btnLoadPghd.addEventListener('click', loadPghdSummaries);
+      btnSavePghdState.addEventListener('click', savePghdStateSignals);
+      pghdInsightGrid.addEventListener('click', async (event) => {
+        const button = event.target.closest('.btn-copy-note, .btn-export-note, .btn-copy-export, .btn-copy-repository');
+        if (!button) return;
+        const card = button.closest('.pghd-insight-card');
+        const draft = card?.querySelector('.pghd-note-draft-editor')?.value || '';
+
+        const originalText = button.textContent;
+        try {
+          if (button.classList.contains('btn-export-note')) {
+            await exportEncounterNoteDraft(card, button);
+          } else if (button.classList.contains('btn-copy-export')) {
+            const exportJson = card?.querySelector('.pghd-export-json')?.textContent || '';
+            if (!exportJson) return;
+            await copyTextToClipboard(exportJson);
+            button.textContent = '복사됨';
+            pghdStatus.textContent = 'Draft export JSON을 클립보드에 복사했습니다.';
+            pghdStatus.style.color = 'var(--color-primary)';
+          } else if (button.classList.contains('btn-copy-repository')) {
+            const repositoryJson = card?.querySelector('.pghd-repository-json')?.textContent || '';
+            if (!repositoryJson) return;
+            await copyTextToClipboard(repositoryJson);
+            button.textContent = '복사됨';
+            pghdStatus.textContent = 'PhysioApp repository upsert payload를 클립보드에 복사했습니다.';
+            pghdStatus.style.color = 'var(--color-primary)';
+          } else {
+            if (!draft) return;
+            await copyTextToClipboard(draft);
+            button.textContent = '복사됨';
+            pghdStatus.textContent = 'Encounter note 초안을 클립보드에 복사했습니다. 검토 후 사용하세요.';
+            pghdStatus.style.color = 'var(--color-primary)';
+          }
+        } catch (err) {
+          button.textContent = '실패';
+          pghdStatus.textContent = `Encounter note export 실패: ${err.message}`;
+          pghdStatus.style.color = 'var(--color-alert)';
+        } finally {
+          window.setTimeout(() => {
+            button.textContent = originalText;
+          }, 1400);
+        }
+      });
       btnClearPghdToken.addEventListener('click', () => {
         localStorage.removeItem('RUN_LOG_ADMIN_TOKEN');
         pghdTokenInput.value = '';

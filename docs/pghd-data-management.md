@@ -16,19 +16,37 @@ Examples:
 - GPX/TCX file import
 - Future Garmin activity payload
 
-Policy:
-- Normalize into `run_log_runs`.
-- Keep compact provider fields in `run_log_runs.raw`.
+- Normalize into `pghd_activity_events`, then project running records into `run_log_runs`.
+- Keep compact provider fields in `pghd_activity_events.raw` and `run_log_runs.raw`.
 - Use `(source, external_id)` as the idempotency key.
 - Do not store screenshots, large files, dense GPS arrays, or per-second watch streams in `raw`.
 
 Current enforcement:
 - `RUN_STORE_MAX_RAW_BYTES`, default `65536`.
 - `run_log_runs.raw_size_bytes`.
-- `run_log_runs.data_classification`, default `PGHD`.
+- `pghd_activity_events.data_classification` and `run_log_runs.data_classification`, default `PGHD`.
 - Dense `streams` and route point arrays over 100 points are pruned from `raw` and represented by `telemetryRef`.
 
-### 2. Normalized run summary
+### 2. Generic activity event
+
+Stored in `pghd_activity_events`:
+- `source`
+- `external_id`
+- `source_record_type`
+- `activity_type`
+- `subject_person_id`
+- `organization_id`
+- `org_client_profile_id`
+- `pghd_connection_id`
+- `started_at`
+- `ended_at`
+- `duration_seconds`
+- `metrics`
+- `raw`
+
+This is the generic PGHD staging layer for running and future activity types.
+
+### 3. Normalized run summary
 
 Stored in typed columns on `run_log_runs`:
 - `source`
@@ -42,10 +60,11 @@ Stored in typed columns on `run_log_runs`:
 - `average_heartrate`
 - `average_cadence`
 - physio link fields such as `subject_person_id`, `organization_id`, `activity_session_id`
+- `pghd_activity_event_id` link to the generic source event
 
 This is the main dashboard query layer.
 
-### 3. Workflow-attached activity
+### 4. Workflow-attached activity
 
 Stored in `activity_sessions` after promotion.
 
@@ -54,7 +73,7 @@ Promotion means:
 - A professional/client workflow context exists.
 - The run can appear in rehab, return-to-activity, or client timeline views.
 
-### 4. High-volume telemetry
+### 5. High-volume telemetry
 
 Examples:
 - full GPS route
@@ -63,14 +82,14 @@ Examples:
 - power/ground-contact/IMU streams
 
 Policy:
-- Do not put this in `run_log_runs.raw`.
+- Do not put this in `pghd_activity_events.raw` or `run_log_runs.raw`.
 - Store externally if needed:
   - Supabase Storage JSON/JSONL gzip
   - compressed telemetry table
   - object storage partitioned by organization/person/date/source
 - Keep only `telemetry_ref` and summary statistics in Postgres.
 
-### 5. Dashboard aggregates
+### 6. Dashboard aggregates
 
 The migration `20260622040100_add_pghd_storage_policy.sql` adds:
 - `run_log_weekly_summaries`

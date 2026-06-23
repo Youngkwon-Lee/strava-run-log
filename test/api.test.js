@@ -99,7 +99,7 @@ test('live metrics rejects unsupported methods', async () => {
   assert.deepEqual(res.body, { error: 'method not allowed' });
 });
 
-test('bridge contract exposes Apple Health and LiveRun payload contract', async () => {
+test('bridge contract exposes PGHD activity, state, and encounter payload contract', async () => {
   withEnv({ PUBLIC_BASE_URL: 'https://example.test' });
   const { default: handler } = await importFresh('../api/bridge/contract.js');
 
@@ -115,17 +115,28 @@ test('bridge contract exposes Apple Health and LiveRun payload contract', async 
   assert.equal(res.body.contractVersion, '2026-06-22');
   assert.equal(res.body.dataClassification.category, 'PGHD');
   assert.equal(res.body.dataClassification.storageBoundary.runLogRuns, 'provider-originated PGHD staging and normalized run history');
+  assert.equal(res.body.dataClassification.storageBoundary.humanStateSnapshots, 'derived weekly state signals calculated from activity events');
+  assert.match(res.body.dataClassification.storageBoundary.encounterNoteDrafts, /not persisted/);
   assert.equal(res.body.ontologyMapping.fhir.heartRate, 'Observation code=http://loinc.org|8867-4 Heart rate');
   assert.equal(res.body.ontologyMapping.openMHealth.pace, 'omh:pace');
   assert.equal(res.body.endpoints.appleHealthIngest.url, 'https://example.test/api/apple-health/ingest');
   assert.equal(res.body.endpoints.appleHealthIngest.requiredFields.external_run_id, 'string, stable idempotency key from the mobile app');
   assert.equal(res.body.endpoints.liveMetrics.url, 'https://example.test/api/live/metrics');
   assert.equal(res.body.endpoints.liveMetrics.optionalFields.pace_sec, 'number, seconds per km, 0 means unavailable');
+  assert.equal(res.body.endpoints.stateSnapshots.url, 'https://example.test/api/run-log/state-snapshots');
+  assert.deepEqual(res.body.endpoints.stateSnapshots.methods, ['GET', 'POST']);
+  assert.equal(res.body.endpoints.encounterInsights.url, 'https://example.test/api/run-log/encounter-insights');
+  assert.equal(res.body.endpoints.pghdPreflight.url, 'https://example.test/api/run-log/preflight');
+  assert.deepEqual(res.body.endpoints.pghdPreflight.responseFields, ['ok', 'source', 'query', 'summary', 'checks', 'nextActions']);
+  assert.equal(res.body.endpoints.encounterNoteDrafts.url, 'https://example.test/api/run-log/encounter-note-drafts');
+  assert.equal(res.body.endpoints.encounterNoteDrafts.persistsClinicalNotes, false);
   assert.deepEqual(res.body.auth.liveMetrics.acceptedHeaders, [
     'Authorization: Bearer <token>',
     'x-live-metrics-token: <token>',
     'x-live-token: <token>'
   ]);
+  assert.equal(res.body.auth.runLogAdmin.tokenEnv, 'RUN_LOG_ADMIN_TOKEN');
+  assert.match(res.body.clientGuidance.noteExport, /authenticated PhysioApp note workflow/);
 });
 
 test('live metrics rejects missing auth when token is configured', async () => {
@@ -992,6 +1003,40 @@ test('run-log weekly summaries reads Supabase view with filters', async () => {
   assert.equal(fetchMock.mock.callCount(), 1);
 });
 
+test('run-log weekly summaries falls back from invalid limit', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/weekly-summaries.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    assert.match(href, /limit=52/);
+    assert.doesNotMatch(href, /limit=NaN/);
+    return Response.json([]);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      limit: 'not-a-number'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.emptyReason, 'no_weekly_activity');
+  assert.match(res.body.emptyMessage, /No weekly PGHD activity summaries/);
+  assert.match(res.body.operatorHints.join('\n'), /subject_person_id/);
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
 test('run-log timeline requires scoped client filter', async () => {
   withEnv({
     RUN_LOG_ADMIN_TOKEN: 'admin-secret',
@@ -1039,11 +1084,16 @@ test('run-log timeline returns runs with linked activity session details', async
           user_id: 'youngkwon',
           name: 'Apple Health Run',
           start_date: '2026-06-22T01:00:00Z',
+          activity_type: 'running',
+          ended_at: '2026-06-22T01:31:50Z',
           distance_meters: 5120,
           moving_time_sec: 1910,
           pace_sec_per_km: 373,
           average_heartrate: 148,
+          max_heartrate: 171,
           average_cadence: 172,
+          calories: 380,
+          source_record_type: 'activity_event',
           subject_person_id: subjectPersonId,
           pghd_connection_id: connectionId,
           activity_session_id: sessionId,
@@ -1090,10 +1140,1044 @@ test('run-log timeline returns runs with linked activity session details', async
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.ok, true);
   assert.equal(res.body.count, 1);
+  assert.equal(res.body.timeline[0].kind, 'activity_event');
+  assert.equal(res.body.timeline[0].legacyKind, 'run');
+  assert.equal(res.body.timeline[0].activityType, 'running');
   assert.equal(res.body.timeline[0].promoted, true);
   assert.equal(res.body.timeline[0].metrics.distanceKm, 5.12);
+  assert.equal(res.body.timeline[0].metrics.maxHeartrate, 171);
   assert.equal(res.body.timeline[0].session.activityType, 'competition');
   assert.equal(fetchMock.mock.callCount(), 2);
+});
+
+test('run-log timeline explains empty scoped results', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/timeline.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    if (href.includes('/rest/v1/run_log_runs?')) return Response.json([]);
+    if (href.includes('/rest/v1/activity_sessions?')) throw new Error('activity sessions should not be queried');
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 0);
+  assert.equal(res.body.emptyReason, 'no_timeline_records');
+  assert.equal(res.body.emptyScope.subjectPersonId, subjectPersonId);
+  assert.equal(res.body.emptyScope.source, 'apple-health');
+  assert.match(res.body.operatorHints.join('\n'), /PGHD connection/);
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('run-log state snapshots requires scoped client filter', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, 'invalid request');
+  assert.match(res.body.details.join('\n'), /subject_person_id or org_client_profile_id is required/);
+});
+
+test('run-log state snapshots returns derived states with source inputs', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const snapshotId = '44444444-4444-4444-8444-444444444444';
+  const runLogRunId = '55555555-5555-4555-8555-555555555555';
+  const pghdActivityEventId = '66666666-6666-4666-8666-666666666666';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /state_type=eq\.fatigue/);
+      assert.match(href, /provider_source=eq\.apple-health/);
+      assert.doesNotMatch(href, /[?&]source=eq\.apple-health/);
+      assert.match(href, /limit=5/);
+      return Response.json([
+        {
+          id: snapshotId,
+          subject_person_id: subjectPersonId,
+          state_type: 'fatigue',
+          value: 0.62,
+          confidence: 0.7,
+          calculated_at: '2026-06-22T00:00:00Z',
+          window_start: '2026-06-15T00:00:00Z',
+          window_end: '2026-06-22T00:00:00Z',
+          source: 'run_log_weekly_summaries',
+          provider_source: 'apple-health',
+          metadata: { loadRatio: 1.5 }
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/human_state_snapshot_inputs?')) {
+      assert.match(href, /snapshot_id=in\.%2844444444-4444-4444-8444-444444444444%29/);
+      return Response.json([
+        {
+          snapshot_id: snapshotId,
+          run_log_run_id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          weight: 1
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /id=in\.%2855555555-5555-4555-8555-555555555555%29/);
+      assert.match(href, /select=id%2Cpghd_activity_event_id%2Csource%2Cexternal_id%2Cname%2Cstart_date/);
+      return Response.json([
+        {
+          id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          source: 'apple-health',
+          external_id: 'apple-001',
+          name: 'Morning rehab run',
+          start_date: '2026-06-18T01:00:00Z',
+          distance_meters: 4020,
+          moving_time_sec: 1510,
+          average_heartrate: 142,
+          raw: {
+            pace: '6:15/km',
+            deviceName: 'Apple Watch'
+          }
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      state_type: 'fatigue',
+      source: 'apple-health',
+      limit: '5'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 1);
+  assert.equal(res.body.snapshots[0].stateType, 'fatigue');
+  assert.equal(res.body.snapshots[0].providerSource, 'apple-health');
+  assert.deepEqual(res.body.snapshots[0].inputs, [{
+    runLogRunId,
+    pghdActivityEventId,
+    weight: 1,
+    activity: {
+      id: runLogRunId,
+      pghdActivityEventId,
+      source: 'apple-health',
+      externalId: 'apple-001',
+      name: 'Morning rehab run',
+      startedAt: '2026-06-18T01:00:00Z',
+      distanceMeters: 4020,
+      distanceKm: 4.02,
+      movingTimeSec: 1510,
+      pace: '6:15/km',
+      averageHeartrate: 142,
+      deviceName: 'Apple Watch'
+    }
+  }]);
+  assert.equal(fetchMock.mock.callCount(), 3);
+});
+
+test('run-log state snapshots derives weekly state signals on request', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const runLogRunId = '55555555-5555-4555-8555-555555555555';
+  const pghdActivityEventId = '66666666-6666-4666-8666-666666666666';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.apple-health/);
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 3,
+          total_km: 18,
+          moving_time_sec: 6300,
+          last_run_at: '2026-06-20T06:00:00Z'
+        },
+        {
+          week_start: '2026-06-08',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 2,
+          total_km: 12,
+          moving_time_sec: 4200,
+          last_run_at: '2026-06-13T06:00:00Z'
+        }
+      ]);
+    }
+
+    if (
+      href.includes('/rest/v1/run_log_runs?')
+      && href.includes('select=id%2Cpghd_activity_event_id')
+      && href.includes('subject_person_id=')
+    ) {
+      assert.match(href, /source=eq\.apple-health/);
+      assert.match(href, /start_date=gte\.2026-06-15/);
+      assert.match(href, /start_date=lte\.2026-06-20T06%3A00%3A00Z/);
+      return Response.json([{ id: runLogRunId, pghd_activity_event_id: pghdActivityEventId }]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /id=in\.%2855555555-5555-4555-8555-555555555555%29/);
+      return Response.json([
+        {
+          id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          source: 'apple-health',
+          external_id: 'apple-001',
+          name: 'Derived source run',
+          start_date: '2026-06-18T01:00:00Z',
+          distance_meters: 4020,
+          moving_time_sec: 1510
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health',
+      derive: 'weekly',
+      limit: '12'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.derived, true);
+  assert.equal(res.body.source, 'human-state-snapshots-derived');
+  assert.deepEqual(
+    res.body.snapshots.map((snapshot) => snapshot.stateType),
+    ['training_load', 'adherence', 'fatigue']
+  );
+  assert.equal(res.body.snapshots[0].inputs[0].runLogRunId, runLogRunId);
+  assert.equal(res.body.snapshots[0].inputs[0].pghdActivityEventId, pghdActivityEventId);
+  assert.equal(res.body.snapshots[0].inputs[0].activity.name, 'Derived source run');
+  assert.equal(fetchMock.mock.callCount(), 3);
+});
+
+test('run-log state snapshots falls back from invalid limit', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    assert.match(href, /\/rest\/v1\/run_log_weekly_summaries\?/);
+    assert.match(href, /limit=120/);
+    assert.doesNotMatch(href, /limit=NaN/);
+    return Response.json([]);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      derive: 'weekly',
+      limit: 'bad'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.count, 0);
+  assert.equal(res.body.emptyReason, 'no_derived_state_snapshots');
+  assert.match(res.body.operatorHints.join('\n'), /weekly summary/);
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('run-log state snapshots derives weekly state signals per provider when unfiltered', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.doesNotMatch(href, /source=eq\./);
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 3,
+          total_km: 18,
+          moving_time_sec: 6300,
+          last_run_at: '2026-06-20T06:00:00Z'
+        },
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'strava',
+          run_count: 2,
+          total_km: 12,
+          moving_time_sec: 4200,
+          last_run_at: '2026-06-19T06:00:00Z'
+        }
+      ]);
+    }
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      return Response.json([]);
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      derive: 'weekly',
+      limit: '12'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.count, 6);
+  assert.deepEqual(
+    [...new Set(res.body.snapshots.map((snapshot) => snapshot.providerSource))].sort(),
+    ['apple-health', 'strava']
+  );
+});
+
+test('run-log state snapshots falls back to derived weekly states when table is missing', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  let callCount = 0;
+  mock.method(globalThis, 'fetch', async (url) => {
+    callCount += 1;
+    const href = String(url);
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      return Response.json(
+        {
+          code: '42P01',
+          message: 'relation "public.human_state_snapshots" does not exist'
+        },
+        { status: 400 }
+      );
+    }
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          run_count: 1,
+          total_km: 5,
+          moving_time_sec: 1800,
+          last_run_at: '2026-06-15T06:00:00Z'
+        }
+      ]);
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      state_type: 'adherence'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.derived, true);
+  assert.equal(res.body.snapshots.length, 1);
+  assert.equal(res.body.snapshots[0].stateType, 'adherence');
+  assert.equal(callCount, 3);
+});
+
+test('run-log state snapshots materializes weekly derived states', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const runLogRunId = '55555555-5555-4555-8555-555555555555';
+  const pghdActivityEventId = '66666666-6666-4666-8666-666666666666';
+  const calls = [];
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    calls.push({ href, options });
+
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.apple-health/);
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 3,
+          total_km: 18,
+          moving_time_sec: 6300,
+          last_run_at: '2026-06-20T06:00:00Z'
+        },
+        {
+          week_start: '2026-06-08',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 2,
+          total_km: 12,
+          moving_time_sec: 4200,
+          last_run_at: '2026-06-13T06:00:00Z'
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/human_state_snapshots?') && options.method === 'DELETE') {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.run_log_weekly_summaries/);
+      assert.match(href, /provider_source=eq\.apple-health/);
+      assert.match(href, /window_start=eq\.2026-06-15/);
+      assert.match(href, /state_type=in\.%28training_load%2Cadherence%2Cfatigue%29/);
+      return new Response(null, { status: 204 });
+    }
+
+    if (href.endsWith('/rest/v1/human_state_snapshots') && options.method === 'POST') {
+      assert.equal(options.headers.Prefer, 'return=representation');
+      const body = JSON.parse(options.body);
+      assert.equal(body.length, 3);
+      assert.deepEqual(
+        body.map((row) => row.state_type),
+        ['training_load', 'adherence', 'fatigue']
+      );
+      assert.equal(body[0].subject_person_id, subjectPersonId);
+      assert.equal(body[0].source, 'run_log_weekly_summaries');
+      assert.equal(body[0].provider_source, 'apple-health');
+      return Response.json(
+        body.map((row, index) => ({
+          id: `snapshot-${index + 1}`,
+          ...row,
+          window_start: `${row.window_start}T00:00:00+00:00`
+        }))
+      );
+    }
+
+    if (
+      href.includes('/rest/v1/run_log_runs?')
+      && href.includes('select=id%2Cpghd_activity_event_id')
+      && href.includes('subject_person_id=')
+    ) {
+      assert.match(href, /select=id%2Cpghd_activity_event_id/);
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.apple-health/);
+      assert.match(href, /start_date=gte\.2026-06-15/);
+      assert.match(href, /start_date=lte\.2026-06-20T06%3A00%3A00Z/);
+      return Response.json([{ id: runLogRunId, pghd_activity_event_id: pghdActivityEventId }]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /id=in\.%2855555555-5555-4555-8555-555555555555%29/);
+      assert.match(href, /select=id%2Cpghd_activity_event_id%2Csource%2Cexternal_id%2Cname%2Cstart_date/);
+      return Response.json([
+        {
+          id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          source: 'apple-health',
+          external_id: 'apple-001',
+          name: 'State source run',
+          start_date: '2026-06-18T01:00:00Z',
+          distance_meters: 5000,
+          moving_time_sec: 1800,
+          raw: {
+            pace: '6:00/km'
+          }
+        }
+      ]);
+    }
+
+    if (href.endsWith('/rest/v1/human_state_snapshot_inputs') && options.method === 'POST') {
+      assert.equal(options.headers.Prefer, 'return=representation');
+      const body = JSON.parse(options.body);
+      assert.equal(body.length, 3);
+      assert.deepEqual(
+        body.map((row) => row.snapshot_id),
+        ['snapshot-1', 'snapshot-2', 'snapshot-3']
+      );
+      assert.deepEqual(
+        body.map((row) => row.run_log_run_id),
+        [runLogRunId, runLogRunId, runLogRunId]
+      );
+      assert.deepEqual(
+        body.map((row) => row.pghd_activity_event_id),
+        [pghdActivityEventId, pghdActivityEventId, pghdActivityEventId]
+      );
+      return Response.json(body);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health',
+      derive: 'weekly',
+      limit: 12
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.persisted, true);
+  assert.equal(res.body.count, 3);
+  assert.equal(res.body.snapshots[0].stateType, 'training_load');
+  assert.equal(res.body.snapshots[0].providerSource, 'apple-health');
+  assert.equal(res.body.snapshots[0].inputs[0].runLogRunId, runLogRunId);
+  assert.equal(res.body.snapshots[0].inputs[0].pghdActivityEventId, pghdActivityEventId);
+  assert.equal(res.body.snapshots[0].inputs[0].activity.name, 'State source run');
+  assert.equal(res.body.snapshots[0].inputs[0].activity.distanceKm, 5);
+  assert.equal(calls.length, 6);
+});
+
+test('run-log state snapshots materialization reports missing migration', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/state-snapshots.js');
+
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: '11111111-1111-4111-8111-111111111111',
+          run_count: 1,
+          total_km: 5,
+          moving_time_sec: 1800,
+          last_run_at: '2026-06-15T06:00:00Z'
+        }
+      ]);
+    }
+    if (href.includes('/rest/v1/human_state_snapshots?') && options.method === 'DELETE') {
+      return Response.json(
+        {
+          code: '42P01',
+          message: 'relation "public.human_state_snapshots" does not exist'
+        },
+        { status: 400 }
+      );
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      subject_person_id: '11111111-1111-4111-8111-111111111111',
+      derive: 'weekly'
+    }
+  });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, 'state snapshot tables are not migrated');
+  assert.match(res.body.details.join('\n'), /20260622145528_add_activity_event_state_snapshots/);
+});
+
+test('run-log encounter insights requires scoped client filter', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/encounter-insights.js');
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, 'invalid request');
+  assert.match(res.body.details.join('\n'), /subject_person_id or org_client_profile_id is required/);
+});
+
+test('run-log encounter insights uses persisted state snapshots first', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/encounter-insights.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fatigueSnapshotId = '44444444-4444-4444-8444-444444444444';
+  const loadSnapshotId = '55555555-5555-4555-8555-555555555555';
+  const runLogRunId = '77777777-7777-4777-8777-777777777777';
+  const pghdActivityEventId = '66666666-6666-4666-8666-666666666666';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /provider_source=eq\.apple-health/);
+      assert.doesNotMatch(href, /\/rest\/v1\/run_log_weekly_summaries/);
+      return Response.json([
+        {
+          id: fatigueSnapshotId,
+          subject_person_id: subjectPersonId,
+          state_type: 'fatigue',
+          value: 0.8,
+          confidence: 0.7,
+          calculated_at: '2026-06-22T00:00:00Z',
+          window_start: '2026-06-15T00:00:00Z',
+          window_end: '2026-06-22T00:00:00Z',
+          source: 'run_log_weekly_summaries',
+          provider_source: 'apple-health',
+          metadata: { loadRatio: 1.6, dataQuality: 'supported' }
+        },
+        {
+          id: loadSnapshotId,
+          subject_person_id: subjectPersonId,
+          state_type: 'training_load',
+          value: 0.68,
+          confidence: 0.75,
+          calculated_at: '2026-06-22T00:00:00Z',
+          window_start: '2026-06-15T00:00:00Z',
+          window_end: '2026-06-22T00:00:00Z',
+          source: 'run_log_weekly_summaries',
+          provider_source: 'apple-health',
+          metadata: { totalKm: 34, priorKmAverage: 21, dataQuality: 'supported' }
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/human_state_snapshot_inputs?')) {
+      assert.match(
+        href,
+        /snapshot_id=in\.%2844444444-4444-4444-8444-444444444444%2C55555555-5555-4555-8555-555555555555%29/
+      );
+      return Response.json([
+        {
+          snapshot_id: fatigueSnapshotId,
+          run_log_run_id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          weight: 1
+        },
+        {
+          snapshot_id: loadSnapshotId,
+          run_log_run_id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          weight: 1
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /id=in\.%2877777777-7777-4777-8777-777777777777%29/);
+      assert.match(href, /select=id%2Cpghd_activity_event_id%2Csource%2Cexternal_id%2Cname%2Cstart_date/);
+      return Response.json([
+        {
+          id: runLogRunId,
+          pghd_activity_event_id: pghdActivityEventId,
+          source: 'apple-health',
+          external_id: 'apple-001',
+          name: 'Morning rehab run',
+          start_date: '2026-06-18T01:00:00Z',
+          distance_meters: 4020,
+          moving_time_sec: 1510,
+          average_heartrate: 142,
+          raw: { pace: '6:15/km' }
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health',
+      limit: '5'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.derived, false);
+  assert.equal(res.body.source, 'encounter-insights');
+  assert.equal(res.body.insights[0].insightType, 'load_review');
+  assert.equal(res.body.insights[0].providerSource, 'apple-health');
+  assert.equal(res.body.insights[0].sourceActivities[0].pghdActivityEventId, pghdActivityEventId);
+  assert.equal(res.body.insights[0].sourceActivities[0].name, 'Morning rehab run');
+  assert.match(res.body.insights[0].noteDraft, /PGHD review: Review recent load/);
+  assert.match(res.body.insights[0].noteDraft, /Clinical note: PGHD-derived context only/);
+  assert.equal(fetchMock.mock.callCount(), 3);
+});
+
+test('run-log encounter insights falls back to weekly derived state when persisted rows are empty', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/encounter-insights.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  let callCount = 0;
+  mock.method(globalThis, 'fetch', async (url) => {
+    callCount += 1;
+    const href = String(url);
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      return Response.json([]);
+    }
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 1,
+          total_km: 6,
+          moving_time_sec: 1800,
+          last_run_at: '2026-06-20T06:00:00Z'
+        }
+      ]);
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      limit: '12'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.derived, true);
+  assert.equal(res.body.source, 'encounter-insights-derived');
+  assert.ok(res.body.insights.some((insight) => insight.insightType === 'data_quality_note'));
+  assert.equal(callCount, 2);
+});
+
+test('run-log encounter note drafts exports a PhysioApp draft row without persisting', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret'
+  });
+  const { default: handler } = await importFresh('../api/run-log/encounter-note-drafts.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      encounterId: '11111111-1111-4111-8111-111111111111',
+      organizationId: '22222222-2222-4222-8222-222222222222',
+      subjectPersonId: '33333333-3333-4333-8333-333333333333',
+      providerPersonId: '44444444-4444-4444-8444-444444444444',
+      noteFormat: 'wellness_note',
+      editedNoteContent: 'Reviewed PGHD note draft.',
+      insight: {
+        insightType: 'load_review',
+        severity: 'warning',
+        evidence: ['fatigue 60%'],
+        noteDraft: 'Original draft'
+      }
+    }
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.persisted, false);
+  assert.equal(res.body.draftExport.table, 'encounter_notes');
+  assert.equal(res.body.draftExport.handoff.targetApp, 'physio_app');
+  assert.equal(res.body.draftExport.handoff.targetMethod, 'upsert');
+  assert.equal(res.body.draftExport.handoff.persistVia, 'authenticated server route/action');
+  assert.equal(res.body.draftExport.row.note_content, 'Reviewed PGHD note draft.');
+  assert.equal(res.body.draftExport.row.data, undefined);
+  assert.equal(res.body.draftExport.row.source_type, 'pghd_encounter_insight');
+  assert.equal(res.body.draftExport.row.ai_draft_snapshot.review_state, 'draft_exported');
+  assert.equal(res.body.draftExport.repositoryParams.note_content, 'Reviewed PGHD note draft.');
+  assert.equal(res.body.draftExport.repositoryParams.discipline_sections.pghd_note_draft.source_type, 'pghd_encounter_insight');
+  assert.equal(res.body.draftExport.repositoryParams.source_system, 'strava_run_log_pghd');
+  assert.equal(res.body.draftExport.repositoryParams.ai_draft_snapshot.review_state, 'draft_exported');
+});
+
+test('run-log encounter note drafts validates clinical note context', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret'
+  });
+  const { default: handler } = await importFresh('../api/run-log/encounter-note-drafts.js');
+
+  const res = await callHandler(handler, {
+    method: 'POST',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {},
+    body: {
+      encounterId: 'bad-id',
+      noteFormat: 'finalized'
+    }
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, 'invalid request');
+  assert.match(res.body.details.join('\n'), /encounterId must be a UUID/);
+  assert.match(res.body.details.join('\n'), /organizationId is required/);
+  assert.match(res.body.details.join('\n'), /noteFormat must be one of/);
+});
+
+test('run-log PGHD preflight summarizes connection, ingest, weekly, and state readiness', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/preflight.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const href = String(url);
+    assert.equal(options.headers.apikey, 'service-role-key');
+    assert.equal(options.headers.authorization, 'Bearer service-role-key');
+
+    if (href.includes('/rest/v1/persons?')) {
+      assert.match(href, /id=eq\.11111111-1111-4111-8111-111111111111/);
+      return Response.json([{ id: subjectPersonId }]);
+    }
+
+    if (href.includes('/rest/v1/org_clients?')) {
+      assert.match(href, /person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      return Response.json([
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          organization_id: '66666666-6666-4666-8666-666666666666',
+          person_id: subjectPersonId,
+          status: 'active'
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/pghd_connections?')) {
+      assert.match(href, /person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /provider=in\.%28apple-health%2Capple_health%29/);
+      return Response.json([
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          person_id: subjectPersonId,
+          provider: 'apple_health',
+          provider_user_id: 'youngkwon',
+          connection_status: 'connected',
+          last_sync_at: '2026-06-22T00:00:00Z'
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/run_log_runs?')) {
+      assert.match(href, /subject_person_id=eq\.11111111-1111-4111-8111-111111111111/);
+      assert.match(href, /source=eq\.apple-health/);
+      return Response.json([
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          source: 'apple-health',
+          name: 'Recent run',
+          start_date: '2026-06-22T00:00:00Z',
+          subject_person_id: subjectPersonId
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) {
+      assert.match(href, /source=eq\.apple-health/);
+      return Response.json([
+        {
+          week_start: '2026-06-15',
+          subject_person_id: subjectPersonId,
+          source: 'apple-health',
+          run_count: 3,
+          total_km: 18,
+          moving_time_sec: 6300
+        }
+      ]);
+    }
+
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      assert.match(href, /provider_source=eq\.apple-health/);
+      return Response.json([
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          subject_person_id: subjectPersonId,
+          state_type: 'fatigue',
+          value: 0.5,
+          confidence: 0.7,
+          calculated_at: '2026-06-22T00:00:00Z'
+        }
+      ]);
+    }
+
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: {
+      subject_person_id: subjectPersonId,
+      source: 'apple-health'
+    },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.source, 'run-log-pghd-preflight');
+  assert.equal(res.body.summary.status, 'ok');
+  assert.deepEqual(
+    res.body.checks.map((item) => `${item.name}:${item.status}`),
+    ['physio_person_context:ok', 'connection_mapping:ok', 'activity_ingest:ok', 'weekly_summary:ok', 'state_materialization:ok']
+  );
+  assert.equal(fetchMock.mock.callCount(), 6);
+});
+
+test('run-log PGHD preflight reports actionable warnings for missing rows and missing state table', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/preflight.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    if (href.includes('/rest/v1/persons?')) return Response.json([]);
+    if (href.includes('/rest/v1/pghd_connections?')) return Response.json([]);
+    if (href.includes('/rest/v1/run_log_runs?')) return Response.json([]);
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) return Response.json([]);
+    if (href.includes('/rest/v1/human_state_snapshots?')) {
+      return Response.json(
+        {
+          code: '42P01',
+          message: 'relation "public.human_state_snapshots" does not exist'
+        },
+        { status: 400 }
+      );
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: { subject_person_id: subjectPersonId },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.summary.status, 'warning');
+  assert.equal(res.body.summary.warningCount, 5);
+  assert.equal(res.body.checks[0].name, 'physio_person_context');
+  assert.equal(res.body.checks[0].status, 'warning');
+  assert.equal(res.body.checks[4].missingTable, true);
+  assert.match(res.body.nextActions.join('\n'), /PhysioApp persons\.id/);
+  assert.match(res.body.nextActions.join('\n'), /provider account mapping/);
+  assert.match(res.body.nextActions.join('\n'), /Human State snapshot migration/);
 });
 
 test('PGHD connections requires admin auth', async () => {

@@ -1,3 +1,5 @@
+import { parseBoundedLimit } from '../../lib/http-query.js';
+import { buildEmptyResponse } from '../../lib/pghd-empty-response.js';
 import { assertSimpleIdentifier, supabaseFetch } from '../../lib/supabase-rest.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,7 +22,7 @@ function isAuthorized(req) {
 }
 
 function parseLimit(value) {
-  return Math.min(100, Math.max(1, Number(value || 30)));
+  return parseBoundedLimit(value, { defaultValue: 30, max: 100 });
 }
 
 function addUuidFilter(params, query, field) {
@@ -53,6 +55,12 @@ function formatPace(secondsPerKm) {
   return `${minutes}:${String(seconds).padStart(2, '0')}/km`;
 }
 
+function isPostgrestMissingColumnError(error) {
+  return /PGRST204|42703|Could not find the '.+' column|column .+ does not exist/i.test(
+    String(error?.message || error || '')
+  );
+}
+
 function runToTimelineItem(run, sessionById) {
   const raw = run.raw && typeof run.raw === 'object' ? run.raw : {};
   const session = run.activity_session_id ? sessionById.get(run.activity_session_id) : null;
@@ -62,11 +70,15 @@ function runToTimelineItem(run, sessionById) {
 
   return compactObject({
     id: `${run.source}:${run.external_id}`,
-    kind: 'run',
+    kind: 'activity_event',
+    legacyKind: 'run',
     source: run.source,
     externalId: run.external_id,
+    activityType: run.activity_type || raw.activityType || 'running',
+    sourceRecordType: run.source_record_type || raw.sourceRecordType || 'activity_event',
     name: run.name || raw.name || `${run.source || 'provider'} run`,
     startedAt: run.start_date || raw.startDate || raw.startedAt,
+    endedAt: run.ended_at || raw.endedAt,
     subjectPersonId: run.subject_person_id,
     userId: run.user_id,
     providerUserId: raw.providerUserId || raw.userId || run.user_id,
@@ -82,7 +94,9 @@ function runToTimelineItem(run, sessionById) {
       paceSecPerKm: Number.isFinite(paceSecPerKm) && paceSecPerKm > 0 ? Math.round(paceSecPerKm) : undefined,
       pace: raw.pace || formatPace(paceSecPerKm),
       averageHeartrate: run.average_heartrate ?? raw.averageHeartrate,
-      averageCadence: run.average_cadence ?? raw.averageCadence
+      maxHeartrate: run.max_heartrate ?? raw.maxHeartrate,
+      averageCadence: run.average_cadence ?? raw.averageCadence,
+      calories: run.calories ?? raw.calories
     }),
     session: session
       ? compactObject({
@@ -120,11 +134,17 @@ export default async function handler(req, res) {
     assertSimpleIdentifier(table, 'RUN_STORE_SUPABASE_TABLE');
 
     const query = req.query || {};
-    const params = new URLSearchParams({
-      select: 'source,external_id,user_id,name,start_date,distance_meters,moving_time_sec,pace_sec_per_km,average_heartrate,average_cadence,subject_person_id,pghd_connection_id,activity_session_id,linked_at,data_classification,raw',
-      order: 'start_date.desc.nullslast',
-      limit: String(parseLimit(query.limit))
-    });
+    function buildRunParams(select) {
+      return new URLSearchParams({
+        select,
+        order: 'start_date.desc.nullslast',
+        limit: String(parseLimit(query.limit))
+      });
+    }
+
+    const params = buildRunParams(
+      'source,external_id,user_id,name,start_date,activity_type,ended_at,distance_meters,moving_time_sec,pace_sec_per_km,average_heartrate,max_heartrate,average_cadence,calories,source_record_type,subject_person_id,pghd_connection_id,activity_session_id,linked_at,data_classification,raw'
+    );
 
     const errors = [
       addUuidFilter(params, query, 'subject_person_id'),
@@ -141,7 +161,17 @@ export default async function handler(req, res) {
     }
     if (errors.length) return res.status(400).json({ error: 'invalid request', details: errors });
 
-    const runs = await supabaseFetch(`/${table}?${params.toString()}`);
+    let runs;
+    try {
+      runs = await supabaseFetch(`/${table}?${params.toString()}`);
+    } catch (error) {
+      if (!isPostgrestMissingColumnError(error)) throw error;
+      params.set(
+        'select',
+        'source,external_id,user_id,name,start_date,distance_meters,moving_time_sec,pace_sec_per_km,average_heartrate,average_cadence,subject_person_id,pghd_connection_id,activity_session_id,linked_at,data_classification,raw'
+      );
+      runs = await supabaseFetch(`/${table}?${params.toString()}`);
+    }
     const sessionById = await fetchActivitySessions((runs || []).map((run) => run.activity_session_id));
     const items = (runs || []).map((run) => runToTimelineItem(run, sessionById));
 
@@ -156,7 +186,8 @@ export default async function handler(req, res) {
         limit: parseLimit(query.limit)
       }),
       timeline: items,
-      count: items.length
+      count: items.length,
+      ...(items.length ? {} : buildEmptyResponse('no_timeline_records', query))
     });
   } catch (e) {
     return res.status(e.statusCode || 500).json({ error: e.message });

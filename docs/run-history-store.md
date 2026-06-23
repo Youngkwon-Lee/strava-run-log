@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The run history store is the shared persistence boundary for normalized running records. It lets Strava and Apple Health data appear in the same dashboard, weekly report, and future coaching context.
+The run history store is the shared persistence boundary for normalized provider activity events. It lets Strava and Apple Health data appear in the same dashboard, weekly report, future coaching context, and physio app state signals.
 
 ## Current Implementation
 
@@ -19,7 +19,14 @@ Default paths:
 
 The file is JSON Lines. Each line is one normalized run record.
 
-For Supabase mode, records are stored in `public.run_log_runs` and the canonical run payload is kept in the `raw` JSONB column. Typed columns such as `source`, `external_id`, `start_date`, `distance_meters`, and `moving_time_sec` are query/index helpers.
+For Supabase mode, records are written through two compatible layers:
+
+- `public.pghd_activity_events`: generic PGHD activity-event staging for running, walking, cycling, rehab exercise, wearable summaries, and future non-running sources.
+- `public.run_log_runs`: running-specific projection and compatibility layer used by existing dashboard, weekly summary, timeline, and state logic.
+
+`run_log_runs.pghd_activity_event_id` links back to the generic event when the new layer is present. The adapter treats `pghd_activity_events` as best-effort so older databases that only have `run_log_runs` keep working.
+
+The canonical compact run payload is kept in `raw`. Typed columns such as `source`, `external_id`, `activity_type`, `start_date`, `distance_meters`, and `moving_time_sec` are query/index helpers.
 
 For PGHD storage policy, retention, raw-size limits, telemetry handling, and dashboard aggregate guidance, see [`pghd-data-management.md`](pghd-data-management.md).
 
@@ -61,6 +68,7 @@ Typical fields:
 - `startDate`
 - `startedAt`
 - `endedAt`
+- `activityType`
 - `distanceMeters`
 - `distanceKm`
 - `movingTimeSec`
@@ -74,12 +82,15 @@ Typical fields:
 - `maxHeartrate`
 - `averageCadence`
 - `calories`
+- `sourceRecordType`
 - `deviceName`
 - `coaching`
 - `subjectPersonId`
 - `organizationId`
 - `orgClientProfileId`
 - `activitySessionId`
+- `pghdActivityEventId`
+- `pghdConnectionId`
 - `linkedAt`
 - `dataClassification`
 - `rawSizeBytes`
@@ -88,6 +99,38 @@ Typical fields:
 - `updatedAt`
 
 Source-specific fields may also be present.
+
+## Derived State
+
+`pghd_activity_events` and `run_log_runs` store source events/projections, not calculated state. Derived values such as training load, adherence, fatigue, recovery, and injury risk should be stored separately in:
+
+- `public.human_state_snapshots`
+- `public.human_state_snapshot_inputs`
+
+Read them through:
+
+```bash
+curl "https://<your-domain>/api/run-log/state-snapshots?subject_person_id=<person_id>&limit=12"
+```
+
+Calculate ad-hoc weekly state signals without persisted rows:
+
+```bash
+curl "https://<your-domain>/api/run-log/state-snapshots?subject_person_id=<person_id>&derive=weekly&limit=12"
+```
+
+Add `source=apple-health` or another provider id to limit the returned state rows to one upstream PGHD provider. Without that filter, weekly derivation returns separate provider-specific state rows when multiple sources exist for the same person and week.
+
+Materialize weekly state signals after the migration is applied:
+
+```bash
+curl -X POST "https://<your-domain>/api/run-log/state-snapshots" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"subject_person_id":"<person_id>","derive":"weekly","limit":12}'
+```
+
+`human_state_snapshot_inputs` can link to `run_log_runs` for running projections and to `pghd_activity_events` for the generic event provenance. This keeps the source event, workflow activity, atomic observation, and calculated state boundaries separate.
 
 ## Limitations
 
@@ -126,6 +169,7 @@ RUN_STORE_BACKEND=supabase
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
 RUN_STORE_SUPABASE_TABLE=run_log_runs
+PGHD_ACTIVITY_EVENTS_TABLE=pghd_activity_events
 ```
 
 Security notes:
