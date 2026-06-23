@@ -1,0 +1,13 @@
+.DS_Store
+.git
+.secrets
+.vercel
+output
+package-lock.json
+test
+scripts
+supabase
+supabase/.branches
+supabase/.temp
+supabase/seed.sql
+*.log
