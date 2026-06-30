@@ -117,6 +117,7 @@ test('production readiness smoke helpers can be imported without executing remot
       'Fetching project "example"',
       'Fetching logs...',
       'No logs found for team/app',
+      'Vercel CLI 54.18.6 (Node.js 22.23.0)',
       '─────────────────────────────────────────────────────────────────────────',
       'Update available! v50.40.0 ≫ v54.18.6',
       'Changelog: https://github.com/vercel/vercel/releases/tag/vercel%4054.18.6',
@@ -376,7 +377,8 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(workflow, /actions\/setup-node@v6\.4\.0/);
   assert.doesNotMatch(workflow, /actions\/checkout@v4/);
   assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
-  assert.match(workflow, /vercel@50\.40\.0/);
+  assert.match(workflow, /--loglevel=error vercel@54\.18\.6/);
+  assert.doesNotMatch(workflow, /vercel@50\.40\.0/);
   assert.match(workflow, /npm run smoke:production/);
 });
 

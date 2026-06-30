@@ -358,6 +358,7 @@ export function parseVercelLogOutput(output) {
     /^> This information is used to shape the CLI roadmap/i,
     /^> You can learn more, including how to opt-out/i,
     /^> https:\/\/vercel\.com\/docs\/cli\/about-telemetry/i,
+    /^Vercel CLI \d+\.\d+\.\d+ \(Node\.js [^)]+\)$/i,
     /^─+$/,
     /^Update available! v[\d.]+/i,
     /^Changelog: https:\/\/github\.com\/vercel\/vercel\/releases\//i,
