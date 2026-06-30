@@ -1,0 +1,1 @@
+DO $$ DECLARE r RECORD; v_count INT := 0; BEGIN FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public' LOOP BEGIN EXECUTE format('ALTER VIEW public.%I SET (security_invoker = on)', r.viewname); v_count := v_count + 1; EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skip view: % - %', r.viewname, SQLERRM; END; END LOOP; RAISE NOTICE 'Fixed % views', v_count; END $$;;
