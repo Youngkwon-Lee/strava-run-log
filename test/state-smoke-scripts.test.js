@@ -54,7 +54,7 @@ test('production readiness smoke helpers can be imported without executing remot
   );
 
   assert.deepEqual(
-    buildVercelLogsArgs({ level: 'error', since: '10m', limit: '5' }),
+    buildVercelLogsArgs({ level: 'error', since: '10m', limit: '5', env: {} }),
     [
       'logs',
       '--environment',
