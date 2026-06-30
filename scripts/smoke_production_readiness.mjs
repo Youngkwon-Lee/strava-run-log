@@ -351,8 +351,13 @@ function redactKnownSecrets(output, env = process.env) {
 export function parseVercelLogOutput(output) {
   const noise = [
     /^Retrieving project/i,
+    /^Fetching project/i,
     /^Fetching logs/i,
     /^No logs found for /i,
+    /^> NOTE: The Vercel CLI now collects telemetry/i,
+    /^> This information is used to shape the CLI roadmap/i,
+    /^> You can learn more, including how to opt-out/i,
+    /^> https:\/\/vercel\.com\/docs\/cli\/about-telemetry/i,
     new RegExp(`^${VERCEL_LOGS_COMMAND}$`, 'i')
   ];
   const lines = stripAnsi(output)
@@ -371,7 +376,10 @@ function runCommand(command, args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: process.cwd(),
-      env: process.env,
+      env: {
+        ...process.env,
+        VERCEL_TELEMETRY_DISABLED: process.env.VERCEL_TELEMETRY_DISABLED || '1'
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     });
     let stdout = '';

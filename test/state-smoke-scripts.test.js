@@ -108,6 +108,21 @@ test('production readiness smoke helpers can be imported without executing remot
     hasLogs: false,
     sample: []
   });
+  assert.deepEqual(
+    parseVercelLogOutput([
+      '> NOTE: The Vercel CLI now collects telemetry regarding usage of the CLI.',
+      '> This information is used to shape the CLI roadmap and prioritize features.',
+      "> You can learn more, including how to opt-out if you'd not like to participate in this program, by visiting the following URL:",
+      '> https://vercel.com/docs/cli/about-telemetry',
+      'Fetching project "example"',
+      'Fetching logs...',
+      'No logs found for team/app'
+    ].join('\n')),
+    {
+      hasLogs: false,
+      sample: []
+    }
+  );
   assert.deepEqual(parseVercelLogOutput('error lambda GET /api/example\nstack line\n'), {
     hasLogs: true,
     sample: ['error lambda GET /api/example', 'stack line']
