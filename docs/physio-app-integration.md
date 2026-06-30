@@ -2,13 +2,15 @@
 
 ## Current Position
 
-`strava-run-log` now stores normalized provider running records in `public.run_log_runs` inside the `moai_web` Supabase project.
+`strava-run-log` stores normalized provider activity records in a PGHD staging path inside the `moai_web` Supabase project.
 
-`moai_web` already has `public.activity_sessions`, which is the better long-term integration point for physio app workflows. However, `activity_sessions` is clinical/workflow oriented and expects fields such as `subject_person_id`, `organization_id`, `episode_id`, `encounter_id`, and `care_plan_id`.
+`moai_web` already has `public.activity_sessions`, which is the better long-term integration point for physio app workflows. However, `activity_sessions` is clinical/workflow oriented and expects fields such as `subject_person_id`, `organization_id`, `activity_type`, `source`, `performed_at`, and `duration_seconds`.
 
-For now, `run_log_runs` should remain the raw/normalized provider history table. Selected rows can later be linked or promoted into `activity_sessions`.
+For now, `pghd_activity_events` is the generic raw/normalized provider event layer and `run_log_runs` remains the running-specific projection/compatibility table. Selected rows can later be linked or promoted into `activity_sessions`.
 
-In PGHD terms, `run_log_runs` is the provider-originated PGHD staging layer and `activity_sessions` is the professional workflow layer after person/client mapping. See [`pghd-ontology-mapping.md`](pghd-ontology-mapping.md).
+In PGHD terms, `pghd_activity_events` is the provider-originated PGHD staging layer, `run_log_runs` is the run projection, and `activity_sessions` is the professional workflow layer after person/client mapping. See [`pghd-ontology-mapping.md`](pghd-ontology-mapping.md).
+
+Derived human state values such as training load, adherence, and fatigue live outside both tables in `public.human_state_snapshots`, with source traceability through `public.human_state_snapshot_inputs`.
 
 The API contract that physio_app should consume is fixed in [`physio-app-api-contract.md`](physio-app-api-contract.md).
 
@@ -26,28 +28,39 @@ The API contract that physio_app should consume is fixed in [`physio-app-api-con
 
 ## Recommended Boundary
 
-Use two layers:
+Use three storage/interpretation layers:
 
-1. `public.run_log_runs`
-   - Provider-originated running history.
+1. `public.pghd_activity_events`
+   - Provider-originated generic PGHD activity events.
    - Idempotent upsert by `(source, external_id)`.
-   - Stores normalized app payload in `raw`.
-   - Safe to import/re-import from Strava or Apple Health.
+   - Stores normalized app payload in `raw` and compact event metrics in `metrics`.
+   - Safe to import/re-import from Strava, Apple Health, Apple Watch, Garmin, GPX/TCX, and future non-running sources.
 
-2. `public.activity_sessions`
+2. `public.run_log_runs`
+   - Running-specific projection and compatibility table.
+   - Links to `pghd_activity_events.id` through `pghd_activity_event_id` when the generic layer is applied.
+   - Stores query helpers such as `subject_person_id`, `activity_type`, `ended_at`, `max_heartrate`, `calories`, `source_record_type`, and `imported_at`.
+
+3. `public.activity_sessions`
    - Physio app workflow/session record.
    - Created only when a run is intentionally attached to a person/care context.
    - Can reference the provider run through metadata or a future FK.
 
-## Future Columns
+4. `public.human_state_snapshots`
+   - Derived state signals calculated from provider activity events or aggregate PGHD.
+   - Stores calculation source separately from upstream provider source.
+   - Should be used for training load, adherence, fatigue, recovery, fitness, and injury risk values.
 
-Identity mapping columns on `run_log_runs`:
+## Implemented Run Link Columns
+
+Identity and workflow-linking columns on `run_log_runs`:
 
 ```sql
 subject_person_id uuid
 organization_id uuid
 org_client_profile_id uuid
 activity_session_id uuid
+pghd_activity_event_id uuid
 linked_at timestamptz
 ```
 
@@ -67,8 +80,8 @@ Suggested flow for turning a stored run into a physio app activity:
    - current implementation first tries `pghd_connections(provider, provider_user_id)`
 3. Insert `activity_sessions`:
    - `subject_person_id`
-   - `activity_type = 'run'`
-   - `source = run_log_runs.source`
+   - `activity_type = request.activity_type` or `other`
+   - `source = mapped provider source`, for example `apple_health`, `app_guided`, or `manual`
    - `performed_at = run_log_runs.start_date`
    - `duration_seconds = run_log_runs.moving_time_sec`
    - `metrics = jsonb_build_object(...)`
@@ -103,13 +116,17 @@ Related read endpoints:
 
 - `GET /api/run-log/weekly-summaries`
 - `GET /api/run-log/timeline`
+- `GET /api/run-log/state-snapshots`
+- `POST /api/run-log/state-snapshots`
+- `GET /api/run-log/encounter-insights`
+- `GET /api/run-log/preflight`
 - `GET/POST /api/pghd/connections`
 
 See [`physio-app-api-contract.md`](physio-app-api-contract.md) for exact auth, query, response, and error shapes.
 
 ## Data Volume Guidance
 
-Keep `run_log_runs.raw` compact:
+Keep `pghd_activity_events.raw` and `run_log_runs.raw` compact:
 
 - Store summaries, splits, coaching, and provider ids.
 - Avoid dense GPS points and per-second telemetry in `raw`.

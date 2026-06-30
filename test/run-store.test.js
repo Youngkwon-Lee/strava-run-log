@@ -100,17 +100,38 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
       return Response.json([]);
     }
 
-    if (options.method === 'POST') {
+    if (options.method === 'POST' && String(url).includes('/rest/v1/pghd_activity_events?')) {
+      assert.match(String(url), /\/rest\/v1\/pghd_activity_events\?on_conflict=source%2Cexternal_id$/);
+      assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
+      const body = JSON.parse(options.body);
+      assert.equal(body.source, 'strava');
+      assert.equal(body.external_id, '123');
+      assert.equal(body.activity_type, 'running');
+      assert.equal(body.source_record_type, 'activity_event');
+      assert.equal(body.duration_seconds, 1800);
+      assert.equal(body.metrics.distance_meters, 5000);
+      assert.equal(body.metrics.max_heartrate, 171);
+      assert.equal(body.metrics.calories, 410);
+      assert.equal(body.data_classification, 'PGHD');
+      assert.equal(body.raw.externalId, '123');
+      return Response.json([{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...body }]);
+    }
+
+    if (options.method === 'POST' && String(url).includes('/rest/v1/run_log_runs?')) {
       assert.match(String(url), /\/rest\/v1\/run_log_runs\?on_conflict=source%2Cexternal_id$/);
       assert.equal(options.headers.Prefer, 'resolution=merge-duplicates,return=representation');
       const body = JSON.parse(options.body);
       assert.equal(body.source, 'strava');
       assert.equal(body.external_id, '123');
+      assert.equal(body.activity_type, 'running');
+      assert.equal(body.source_record_type, 'activity_event');
       assert.equal(body.distance_meters, 5000);
       assert.equal(body.data_classification, 'PGHD');
+      assert.equal(body.pghd_activity_event_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       assert.equal(typeof body.raw_size_bytes, 'number');
       assert.equal(body.raw.externalId, '123');
       assert.equal(body.raw.dataClassification, 'PGHD');
+      assert.equal(body.raw.pghdActivityEventId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       return Response.json([{ ...body, created_at: '2026-06-20T06:00:00Z' }]);
     }
 
@@ -138,12 +159,17 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
     source: 'strava',
     startDate: '2026-06-20T06:00:00Z',
     distanceMeters: 5000,
-    movingTimeSec: 1800
+    movingTimeSec: 1800,
+    maxHeartrate: 171,
+    calories: 410
   });
 
-  assert.equal(fetchMock.mock.callCount(), 2);
-  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(fetchMock.mock.callCount(), 3);
+  assert.match(calls[0].url, /\/rest\/v1\/pghd_activity_events\?/);
+  assert.match(calls[1].url, /\/rest\/v1\/run_log_runs\?/);
   assert.equal(result.run.source, 'strava');
+  assert.equal(result.run.pghdActivityEventId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  assert.equal(result.pghdActivityEvent.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
   assert.equal(result.count, 1);
 });
 
@@ -175,10 +201,19 @@ test('Supabase run store resolves PGHD connection before upsert', async () => {
       ]);
     }
 
-    if (options.method === 'POST') {
+    if (options.method === 'POST' && href.includes('/rest/v1/pghd_activity_events?')) {
       const body = JSON.parse(options.body);
       assert.equal(body.subject_person_id, subjectPersonId);
       assert.equal(body.pghd_connection_id, connectionId);
+      assert.equal(body.raw.connectionResolution.connectionResolved, true);
+      return Response.json([{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...body }]);
+    }
+
+    if (options.method === 'POST' && href.includes('/rest/v1/run_log_runs?')) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.subject_person_id, subjectPersonId);
+      assert.equal(body.pghd_connection_id, connectionId);
+      assert.equal(body.pghd_activity_event_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
       assert.equal(body.raw.connectionResolution.connectionResolved, true);
       return Response.json([{ ...body, created_at: '2026-06-20T06:00:00Z' }]);
     }
@@ -201,6 +236,56 @@ test('Supabase run store resolves PGHD connection before upsert', async () => {
 
   assert.equal(result.run.subjectPersonId, subjectPersonId);
   assert.equal(result.run.pghdConnectionId, connectionId);
+  assert.equal(result.run.pghdActivityEventId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  assert.equal(calls.length, 3);
+});
+
+test('Supabase run store keeps run_log_runs upsert when generic PGHD activity table is not applied', async () => {
+  setEnv({
+    RUN_STORE_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+
+  const calls = [];
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    const href = String(url);
+
+    if (href.includes('/rest/v1/pghd_connections?')) return Response.json([]);
+
+    if (href.includes('/rest/v1/pghd_activity_events?')) {
+      return Response.json(
+        { code: 'PGRST205', message: "Could not find the table 'public.pghd_activity_events'" },
+        { status: 404 }
+      );
+    }
+
+    if (options.method === 'POST' && href.includes('/rest/v1/run_log_runs?')) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.source, 'strava');
+      assert.equal(body.external_id, 'missing-generic');
+      assert.equal(body.pghd_activity_event_id, undefined);
+      return Response.json([{ ...body, created_at: '2026-06-20T06:00:00Z' }]);
+    }
+
+    return Response.json([]);
+  });
+
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+  const result = await upsertStoredRun(
+    {
+      id: 'missing-generic',
+      source: 'strava',
+      startDate: '2026-06-20T06:00:00Z',
+      distanceMeters: 5000,
+      movingTimeSec: 1800
+    },
+    { skipCount: true }
+  );
+
+  assert.equal(result.run.externalId, 'missing-generic');
+  assert.equal(result.pghdActivityEvent, undefined);
   assert.equal(calls.length, 2);
 });
 

@@ -4,20 +4,32 @@
 
 The running data ingested from Strava, Apple Health, Garmin, Apple Watch LiveRun, and GPX/TCX imports should be treated as **PGHD: patient-generated health data** once it is used in the Kinnero/physio app context.
 
-Keep two layers:
+Keep three layers:
 
-1. `public.run_log_runs`
-   - Provider-originated PGHD staging table.
-   - Stores source-normalized run history and compact raw payload.
+1. `public.pghd_activity_events`
+   - Provider-originated generic PGHD activity-event staging table.
+   - Stores source-normalized activity history, compact metrics, and compact raw payload.
    - Idempotent by `(source, external_id)`.
    - Can exist before the person is mapped to a physio app client.
+   - Represents the activity event input layer across running, walking, cycling, rehab exercise, and wearable summaries.
 
-2. `public.activity_sessions`
+2. `public.run_log_runs`
+   - Running-specific projection and compatibility layer.
+   - Links to `pghd_activity_events.id` through `pghd_activity_event_id` when available.
+   - Keeps existing dashboard, weekly summary, timeline, and state derivation contracts stable while the generic event layer expands.
+
+3. `public.human_state_snapshots`
+   - Derived human state values calculated from activity events and related PGHD.
+   - Stores state types such as training load, adherence, fatigue, recovery, fitness, and injury risk.
+   - Keeps calculation source and provider source separate.
+   - Uses `public.human_state_snapshot_inputs` for traceability back to source activity events.
+
+4. `public.activity_sessions`
    - Professional workflow record.
    - Created only after a run is attached to `subject_person_id` and optionally `organization_id`, `org_client_profile_id`, `episode_id`, `encounter_id`, or `care_plan_id`.
    - This is the better long-term surface for dashboards used by clinicians, coaches, or rehab professionals.
 
-In short: data lands as PGHD in `run_log_runs`; it becomes a physio workflow activity when promoted into `activity_sessions`.
+In short: data lands as PGHD activity events in `pghd_activity_events`; running data is projected into `run_log_runs`; it can be interpreted into human state signals in `human_state_snapshots`; it becomes a physio workflow activity only when promoted into `activity_sessions`.
 
 ## Source Rationale
 
@@ -32,32 +44,36 @@ In short: data lands as PGHD in `run_log_runs`; it becomes a physio workflow act
 
 | Local field / concept | Local table | PGHD meaning | FHIR / ontology target |
 | --- | --- | --- | --- |
-| `source` | `run_log_runs` | Origin system | `Observation.meta.source` or identifier system |
-| `external_id` | `run_log_runs` | Stable idempotency key | `Observation.identifier` |
-| `user_id` | `run_log_runs.raw` | App/account user before clinical mapping | Patient/account mapping input |
-| `subject_person_id` | `run_log_runs`, `activity_sessions` | Mapped physio app person | `Observation.subject -> Patient` |
+| `source` | `pghd_activity_events`, `run_log_runs` | Origin system | `Observation.meta.source` or identifier system |
+| `external_id` | `pghd_activity_events`, `run_log_runs` | Stable idempotency key | `Observation.identifier` |
+| `user_id` | `pghd_activity_events.raw`, `run_log_runs.raw` | App/account user before clinical mapping | Patient/account mapping input |
+| `subject_person_id` | `pghd_activity_events`, `run_log_runs`, `activity_sessions` | Mapped physio app person | `Observation.subject -> Patient` |
 | `deviceName`, `device_source` | `raw` | Capturing wearable/app | `Observation.device -> Device` |
-| `startDate`, `startedAt`, `endedAt` | `run_log_runs` | Activity period | `Observation.effectivePeriod` |
+| `startDate`, `startedAt`, `endedAt` | `pghd_activity_events`, `run_log_runs` | Activity period | `Observation.effectivePeriod` |
 | `distanceMeters` | `raw`, metrics | Workout distance | Activity Observation component, UCUM `m` |
-| `movingTimeSec` | `run_log_runs` | Active duration | Activity Observation component, UCUM `s` |
+| `movingTimeSec` | `pghd_activity_events`, `run_log_runs` | Active duration | Activity Observation component, UCUM `s` |
 | `paceSecPerKm` | `raw`, metrics | Derived pace | Open mHealth pace or local coded component |
-| `averageHeartrate` | `run_log_runs` | Average HR during activity | FHIR Observation, LOINC `8867-4` when atomic |
+| `averageHeartrate` | `pghd_activity_events`, `run_log_runs` | Average HR during activity | FHIR Observation, LOINC `8867-4` when atomic |
 | `calories` | `raw` | Energy burned | FHIR Observation, LOINC `41981-2` |
 | `route_points` | `raw` or future telemetry store | Location time series | Open mHealth geoposition or separate telemetry object |
 | weekly moderate minutes | report summary | Activity guideline progress | HL7 Physical Activity IG Exercise Vital Sign |
+| `state_type`, `value`, `confidence` | `human_state_snapshots` | Derived human state assertion | FHIR Observation with local code and provenance |
+| `provider_source` | `human_state_snapshots` | Upstream PGHD provider used as state input | Observation.derivedFrom / provenance source |
 
 ## What Not To Do
 
-- Do not store dense GPS or per-second watch telemetry directly in `run_log_runs.raw` long term.
+- Do not store dense GPS or per-second watch telemetry directly in `pghd_activity_events.raw` or `run_log_runs.raw` long term.
 - Do not treat raw provider data as a clinical diagnosis.
 - Do not write directly into `activity_sessions` until a client/person mapping exists.
+- Do not store fatigue, adherence, training load, recovery, or risk values on `run_log_runs`; keep them in `human_state_snapshots`.
 - Do not collapse provider identity, app user identity, and physio client identity into one field.
 
 ## Implementation Notes
 
 - `GET /api/bridge/contract` exposes `dataClassification.category = "PGHD"` and a compact `ontologyMapping` block for bridge clients.
 - `POST /api/run-log/promote-to-activity-session` is the current boundary-crossing endpoint from provider PGHD into physio workflow records.
-- If a future FHIR export is needed, generate FHIR Bundles from `run_log_runs`/`activity_sessions` rather than making FHIR the internal write model too early.
+- `GET/POST /api/run-log/state-snapshots` exposes or materializes the current derived human state layer.
+- If a future FHIR export is needed, generate FHIR Bundles from `run_log_runs`, `human_state_snapshots`, and `activity_sessions` rather than making FHIR the internal write model too early.
 - For the current `moai_web` table boundary audit, see [`pghd-table-boundary-audit.md`](pghd-table-boundary-audit.md).
 
 ## Sources

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import appleHealthIngestHandler from '../api/apple-health/ingest.js';
 import pghdConnectionsHandler from '../api/pghd/connections.js';
+import preflightHandler from '../api/run-log/preflight.js';
 import promoteToActivitySessionHandler from '../api/run-log/promote-to-activity-session.js';
+import stateSnapshotsHandler from '../api/run-log/state-snapshots.js';
 import timelineHandler from '../api/run-log/timeline.js';
 import weeklySummariesHandler from '../api/run-log/weekly-summaries.js';
 import { supabaseFetch } from '../lib/supabase-rest.js';
@@ -65,6 +67,10 @@ function ensureRuntimeEnv() {
   process.env.APPLE_HEALTH_INGEST_TOKEN = process.env.APPLE_HEALTH_INGEST_TOKEN || 'local-pghd-smoke-apple';
 }
 
+function isTruthyEnv(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
 function createResponse() {
   return {
     statusCode: 200,
@@ -95,9 +101,187 @@ function maskId(value) {
   return `${text.slice(0, 8)}...${text.slice(-4)}`;
 }
 
+export function buildPreflightEvidence(preflight) {
+  const preflightStatuses = new Map((preflight?.checks || []).map((item) => [item.name, item.status]));
+  const preflightChecks = Object.fromEntries(preflightStatuses);
+  const preflightWarnings = (preflight?.checks || [])
+    .filter((item) => item.status !== 'ok')
+    .map((item) => ({
+      name: item.name,
+      status: item.status,
+      message: item.message,
+      operatorHints: item.operatorHints || []
+    }));
+
+  return {
+    preflightStatus: preflight?.summary?.status,
+    preflightChecks,
+    preflightWarnings,
+    preflightNextActions: preflight?.nextActions || []
+  };
+}
+
 function qs(params) {
   const search = new URLSearchParams(params);
   return search.toString();
+}
+
+function isMissingTableError(error) {
+  return /PGRST205|42P01|relation .+ does not exist|Could not find the table/i.test(
+    String(error?.message || error || '')
+  );
+}
+
+async function hasOrgClientContext(personId) {
+  if (!personId) return false;
+  try {
+    const rows = await supabaseFetch(
+      `/org_clients?${qs({
+        select: 'id,person_id,organization_id,status',
+        person_id: `eq.${personId}`,
+        limit: '1'
+      })}`
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (error) {
+    if (isMissingTableError(error)) return false;
+    throw error;
+  }
+}
+
+async function firstConnectionWithOrgClientContext(rows) {
+  for (const row of rows || []) {
+    if (await hasOrgClientContext(row.person_id)) {
+      return {
+        ...row,
+        hasOrgClientContext: true
+      };
+    }
+  }
+  return null;
+}
+
+async function findBootstrapMembership() {
+  const explicitOrgId = String(process.env.PGHD_SMOKE_ORGANIZATION_ID || '').trim();
+  const explicitProviderPersonId = String(process.env.PGHD_SMOKE_PROVIDER_PERSON_ID || '').trim();
+  if (explicitOrgId && explicitProviderPersonId) {
+    return {
+      organization_id: explicitOrgId,
+      person_id: explicitProviderPersonId,
+      role: 'explicit'
+    };
+  }
+
+  const rows = await supabaseFetch(
+    `/organization_members?${qs({
+      select: 'organization_id,person_id,role,status,updated_at',
+      role: 'in.(owner,admin,provider,staff)',
+      status: 'eq.active',
+      deleted_at: 'is.null',
+      order: 'updated_at.desc.nullslast',
+      limit: '1'
+    })}`
+  );
+  return Array.isArray(rows) ? rows[0] : null;
+}
+
+export function shouldBootstrapOrgClient(env = process.env) {
+  return isTruthyEnv(env.PGHD_SMOKE_BOOTSTRAP_ORG_CLIENT);
+}
+
+export function shouldMaterializeSmokeState(env = process.env) {
+  return isTruthyEnv(env.PGHD_SMOKE_MATERIALIZE_STATE);
+}
+
+async function insertReturning(path, body) {
+  const rows = await supabaseFetch(path, {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(body)
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row?.id) throw new Error(`insert ${path} did not return an id`);
+  return row;
+}
+
+async function createBootstrappedOrgClientContext(stamp) {
+  const membership = await findBootstrapMembership();
+  if (!membership?.organization_id || !membership?.person_id) {
+    throw new Error('PGHD smoke bootstrap requires an active PhysioApp organization_members provider/staff row');
+  }
+
+  const personId = randomUUID();
+  const providerUserId = `pghd-smoke-bootstrap-${stamp}`;
+  const person = await insertReturning('/persons', {
+    id: personId,
+    first_name: 'PGHD',
+    last_name: `Smoke-${stamp.slice(-6)}`,
+    source_type: 'test',
+    user_type: 'client',
+    is_active: true,
+    onboarding_status: 'completed',
+    additional_info: {
+      smoke: true,
+      created_by: 'scripts/smoke_pghd_e2e.mjs',
+      stamp
+    }
+  });
+
+  const organizationMember = await insertReturning('/organization_members', {
+    organization_id: membership.organization_id,
+    person_id: person.id,
+    role: 'client',
+    status: 'active',
+    joined_at: new Date().toISOString(),
+    profile_metadata: {
+      smoke: true,
+      created_by: 'scripts/smoke_pghd_e2e.mjs',
+      stamp
+    }
+  });
+
+  const orgClient = await insertReturning('/org_clients', {
+    organization_id: membership.organization_id,
+    person_id: person.id,
+    status: 'active',
+    intake_date: new Date().toISOString().slice(0, 10),
+    created_by: membership.person_id
+  });
+
+  const body = await callHandler(pghdConnectionsHandler, {
+    method: 'POST',
+    url: '/api/pghd/connections',
+    headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+    query: {},
+    body: {
+      person_id: person.id,
+      provider: 'apple-health',
+      provider_user_id: providerUserId,
+      connection_status: 'connected',
+      metadata: {
+        smoke: true,
+        created_by: 'scripts/smoke_pghd_e2e.mjs',
+        selected_for: 'bootstrapped_physio_org_client_context',
+        organization_id: membership.organization_id,
+        provider_person_id: membership.person_id,
+        stamp
+      }
+    }
+  });
+
+  if (!body.connection?.id) throw new Error('bootstrapped apple-health pghd connection was not returned');
+  return {
+    connection: body.connection,
+    providerUserId,
+    created: true,
+    hasOrgClientContext: true,
+    selectionMode: 'bootstrapped_apple_health_org_client_context',
+    bootstrapArtifacts: {
+      personId: person.id,
+      organizationMemberId: organizationMember.id,
+      orgClientId: orgClient.id
+    }
+  };
 }
 
 async function findAppleHealthConnection() {
@@ -107,10 +291,11 @@ async function findAppleHealthConnection() {
       provider: 'in.(apple-health,apple_health)',
       provider_user_id: 'not.is.null',
       order: 'updated_at.desc',
-      limit: '1'
+      limit: '20'
     })}`
   );
-  return Array.isArray(rows) ? rows[0] : null;
+  const values = Array.isArray(rows) ? rows : [];
+  return (await firstConnectionWithOrgClientContext(values)) || values[0] || null;
 }
 
 async function findAnyConnection() {
@@ -119,23 +304,70 @@ async function findAnyConnection() {
       select: 'id,person_id,provider,provider_user_id',
       person_id: 'not.is.null',
       order: 'updated_at.desc',
-      limit: '1'
+      limit: '20'
     })}`
   );
-  return Array.isArray(rows) ? rows[0] : null;
+  const values = Array.isArray(rows) ? rows : [];
+  return (await firstConnectionWithOrgClientContext(values)) || values[0] || null;
 }
 
 async function ensureAppleHealthConnection(stamp) {
   const existing = await findAppleHealthConnection();
-  if (existing?.person_id && existing?.provider_user_id) {
+  if (existing?.person_id && existing?.provider_user_id && existing.hasOrgClientContext) {
     return {
       connection: existing,
       providerUserId: existing.provider_user_id,
-      created: false
+      created: false,
+      hasOrgClientContext: true,
+      selectionMode: 'existing_apple_health_with_org_client_context'
     };
   }
 
   const base = await findAnyConnection();
+  if (base?.person_id && base.hasOrgClientContext) {
+    const providerUserId = `pghd-smoke-${stamp}`;
+    const body = await callHandler(pghdConnectionsHandler, {
+      method: 'POST',
+      url: '/api/pghd/connections',
+      headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+      query: {},
+      body: {
+        person_id: base.person_id,
+        provider: 'apple-health',
+        provider_user_id: providerUserId,
+        connection_status: 'connected',
+        metadata: {
+          smoke: true,
+          created_by: 'scripts/smoke_pghd_e2e.mjs',
+          selected_for: 'physio_org_client_context'
+        }
+      }
+    });
+
+    if (!body.connection?.id) throw new Error('temporary apple-health pghd connection was not returned');
+    return {
+      connection: body.connection,
+      providerUserId,
+      created: true,
+      hasOrgClientContext: true,
+      selectionMode: 'temporary_apple_health_from_org_client_context'
+    };
+  }
+
+  if (shouldBootstrapOrgClient()) {
+    return createBootstrappedOrgClientContext(stamp);
+  }
+
+  if (existing?.person_id && existing?.provider_user_id) {
+    return {
+      connection: existing,
+      providerUserId: existing.provider_user_id,
+      created: false,
+      hasOrgClientContext: false,
+      selectionMode: 'existing_apple_health_without_org_client_context'
+    };
+  }
+
   if (!base?.person_id) {
     throw new Error('no pghd_connections row exists to reuse a valid person_id');
   }
@@ -162,8 +394,21 @@ async function ensureAppleHealthConnection(stamp) {
   return {
     connection: body.connection,
     providerUserId,
-    created: true
+    created: true,
+    hasOrgClientContext: Boolean(base.hasOrgClientContext),
+    selectionMode: base.hasOrgClientContext
+      ? 'temporary_apple_health_from_org_client_context'
+      : 'temporary_apple_health_without_org_client_context'
   };
+}
+
+export function assertOrgClientContextSelection(mapped, env = process.env) {
+  if (!isTruthyEnv(env.PGHD_SMOKE_REQUIRE_ORG_CLIENT_CONTEXT)) return;
+  if (mapped?.hasOrgClientContext) return;
+
+  throw new Error(
+    'PGHD smoke requires an org-client subject, but no reusable PGHD connection with org_clients context was found'
+  );
 }
 
 function makeApplePayload(stamp, providerUserId) {
@@ -215,14 +460,34 @@ async function fetchStoredRun(externalId) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
-async function cleanup({ externalId, activitySessionId, temporaryConnectionId }) {
+async function cleanup({ externalId, activitySessionId, temporaryConnectionId, bootstrapArtifacts, materializedStateSnapshotIds }) {
   const errors = [];
   const runFilter = qs({ source: 'eq.apple-health', external_id: `eq.${externalId}` });
+  const orgClientId = bootstrapArtifacts?.orgClientId;
+  const organizationMemberId = bootstrapArtifacts?.organizationMemberId;
+  const personId = bootstrapArtifacts?.personId;
+  const stateSnapshotIds = materializedStateSnapshotIds || [];
 
   for (const step of [
+    async () => stateSnapshotIds.length && supabaseFetch(`/human_state_snapshots?${qs({ id: `in.(${stateSnapshotIds.join(',')})` })}`, { method: 'DELETE' }),
     async () => supabaseFetch(`/run_log_runs?${runFilter}`, { method: 'DELETE' }),
     async () => activitySessionId && supabaseFetch(`/activity_sessions?${qs({ id: `eq.${activitySessionId}` })}`, { method: 'DELETE' }),
-    async () => temporaryConnectionId && supabaseFetch(`/pghd_connections?${qs({ id: `eq.${temporaryConnectionId}` })}`, { method: 'DELETE' })
+    async () => temporaryConnectionId && supabaseFetch(`/pghd_connections?${qs({ id: `eq.${temporaryConnectionId}` })}`, { method: 'DELETE' }),
+    async () => orgClientId && supabaseFetch(`/org_clients?${qs({ id: `eq.${orgClientId}` })}`, { method: 'DELETE' }),
+    async () => organizationMemberId && supabaseFetch(`/organization_members?${qs({ id: `eq.${organizationMemberId}` })}`, { method: 'DELETE' }),
+    async () => personId && supabaseFetch(`/persons?${qs({ id: `eq.${personId}` })}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        is_active: false,
+        anonymized_at: new Date().toISOString(),
+        additional_info: {
+          smoke: true,
+          cleanup: 'pghd_smoke_tombstone',
+          cleaned_at: new Date().toISOString()
+        }
+      })
+    })
   ]) {
     try {
       await step();
@@ -239,14 +504,18 @@ async function main() {
   const context = {
     externalId: null,
     activitySessionId: null,
-    temporaryConnectionId: null
+    temporaryConnectionId: null,
+    bootstrapArtifacts: null,
+    materializedStateSnapshotIds: []
   };
 
   try {
     ensureRuntimeEnv();
 
     const mapped = await ensureAppleHealthConnection(stamp);
+    assertOrgClientContextSelection(mapped);
     if (mapped.created) context.temporaryConnectionId = mapped.connection.id;
+    if (mapped.bootstrapArtifacts) context.bootstrapArtifacts = mapped.bootstrapArtifacts;
 
     const payload = makeApplePayload(stamp, mapped.providerUserId);
     context.externalId = payload.external_run_id;
@@ -279,6 +548,73 @@ async function main() {
     });
     const summaryFound = summaries.summaries.some((row) => row.user_id === mapped.providerUserId && Number(row.run_count) >= 1);
     if (!summaryFound) throw new Error('weekly summary did not include the smoke Apple Health run');
+
+    let materializedState = null;
+    if (shouldMaterializeSmokeState()) {
+      if (!mapped.bootstrapArtifacts) {
+        throw new Error('PGHD_SMOKE_MATERIALIZE_STATE requires PGHD_SMOKE_BOOTSTRAP_ORG_CLIENT so existing client state is not replaced');
+      }
+      materializedState = await callHandler(stateSnapshotsHandler, {
+        method: 'POST',
+        url: '/api/run-log/state-snapshots',
+        headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+        query: {},
+        body: {
+          subject_person_id: storedRun.subject_person_id,
+          source: 'apple-health',
+          derive: 'weekly',
+          limit: '12'
+        }
+      });
+      context.materializedStateSnapshotIds = (materializedState.snapshots || [])
+        .map((snapshot) => snapshot.id)
+        .filter(Boolean);
+      if (!context.materializedStateSnapshotIds.length) {
+        throw new Error('state materialization did not persist any snapshots');
+      }
+    }
+
+    const preflight = await callHandler(preflightHandler, {
+      method: 'GET',
+      url: '/api/run-log/preflight',
+      headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+      query: {
+        subject_person_id: storedRun.subject_person_id,
+        source: 'apple-health',
+        limit: '5'
+      },
+      body: {}
+    });
+    const preflightEvidence = buildPreflightEvidence(preflight);
+    const preflightStatuses = new Map(Object.entries(preflightEvidence.preflightChecks));
+    if (!['ok', 'warning'].includes(preflightStatuses.get('physio_person_context'))) {
+      throw new Error('preflight physio_person_context was not ok or warning');
+    }
+    for (const name of ['connection_mapping', 'activity_ingest', 'weekly_summary']) {
+      if (preflightStatuses.get(name) !== 'ok') {
+        throw new Error(`preflight ${name} was not ok`);
+      }
+    }
+    if (!['ok', 'warning'].includes(preflightStatuses.get('state_materialization'))) {
+      throw new Error('preflight state_materialization was not ok or warning');
+    }
+
+    const stateSignals = await callHandler(stateSnapshotsHandler, {
+      method: 'GET',
+      url: '/api/run-log/state-snapshots',
+      headers: { authorization: `Bearer ${process.env.RUN_LOG_ADMIN_TOKEN}` },
+      query: {
+        subject_person_id: storedRun.subject_person_id,
+        source: 'apple-health',
+        derive: 'weekly',
+        limit: '12'
+      },
+      body: {}
+    });
+    const stateTypes = new Set((stateSignals.snapshots || []).map((snapshot) => snapshot.stateType));
+    if (!stateTypes.has('training_load') || !stateTypes.has('adherence')) {
+      throw new Error('derived state signals did not include training_load and adherence');
+    }
 
     const promoted = await callHandler(promoteToActivitySessionHandler, {
       method: 'POST',
@@ -318,6 +654,9 @@ async function main() {
         'pghd connection resolved',
         'apple-health ingest stored run',
         'weekly summary found run',
+        ...(materializedState ? ['persisted state snapshots materialized'] : []),
+        'pghd preflight checked readiness',
+        'derived state signals calculated',
         'activity session promoted',
         'client timeline found promoted run',
         'smoke rows cleaned up'
@@ -325,9 +664,15 @@ async function main() {
       evidence: {
         externalId: payload.external_run_id,
         reusedExistingConnection: !mapped.created,
+        connectionSelectionMode: mapped.selectionMode,
+        selectedOrgClientContext: mapped.hasOrgClientContext,
+        bootstrappedOrgClientContext: Boolean(mapped.bootstrapArtifacts),
+        materializedStateSnapshotCount: materializedState?.count || 0,
         subjectPersonId: maskId(storedRun.subject_person_id),
         pghdConnectionId: maskId(storedRun.pghd_connection_id),
         activitySessionId: maskId(context.activitySessionId),
+        ...preflightEvidence,
+        stateSignalCount: stateSignals.count,
         distanceKm: ingest.summary.distanceKm,
         pace: ingest.summary.pace
       }
@@ -343,4 +688,6 @@ async function main() {
   }
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
