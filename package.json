@@ -27,6 +27,8 @@
     "check:pghd:state-schema": "node scripts/check_pghd_state_schema.mjs",
     "smoke:pghd:state": "node scripts/smoke_pghd_state_materialization.mjs",
     "smoke:pghd:state:db": "node scripts/smoke_pghd_state_db.mjs",
+    "seed:pghd:demo-client": "node scripts/seed_pghd_demo_client.mjs",
+    "check:pghd:demo-client": "node scripts/seed_pghd_demo_client.mjs --check",
     "smoke:pghd:db": "supabase db query --linked --file scripts/smoke_pghd_db.sql -o table"
   }
 }
