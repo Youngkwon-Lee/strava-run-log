@@ -304,8 +304,8 @@ async function checkProductionPreflight(baseUrl) {
   };
 }
 
-export function buildVercelLogsArgs({ level, since = DEFAULT_LOG_WINDOW, limit = DEFAULT_LOG_LIMIT } = {}) {
-  return [
+export function buildVercelLogsArgs({ level, since = DEFAULT_LOG_WINDOW, limit = DEFAULT_LOG_LIMIT, env = process.env } = {}) {
+  const args = [
     'logs',
     '--environment',
     'production',
@@ -320,6 +320,32 @@ export function buildVercelLogsArgs({ level, since = DEFAULT_LOG_WINDOW, limit =
     '--expand',
     '--no-color'
   ];
+
+  const project = String(env.VERCEL_PROJECT_ID || env.VERCEL_PROJECT || env.VERCEL_PROJECT_NAME || '').trim();
+  if (project) args.push('--project', project);
+
+  const scope = String(env.VERCEL_SCOPE || '').trim();
+  if (scope) args.push('--scope', scope);
+
+  const token = String(env.VERCEL_TOKEN || '').trim();
+  if (token) args.push('--token', token);
+
+  return args;
+}
+
+function redactKnownSecrets(output, env = process.env) {
+  let text = String(output || '');
+  for (const key of [
+    'VERCEL_TOKEN',
+    'PRODUCTION_RUN_LOG_ADMIN_TOKEN',
+    'RUN_LOG_ADMIN_TOKEN',
+    'LIVE_METRICS_TOKEN',
+    'SUPABASE_SERVICE_ROLE_KEY'
+  ]) {
+    const value = String(env[key] || '');
+    if (value.length >= 8) text = text.split(value).join('[redacted]');
+  }
+  return text;
 }
 
 export function parseVercelLogOutput(output) {
@@ -380,7 +406,7 @@ async function checkVercelLogs(level, since) {
   if (result.error) throw new Error(`${VERCEL_LOGS_COMMAND} failed: ${result.error.message}`);
   if (result.timedOut) throw new Error(`${VERCEL_LOGS_COMMAND} timed out`);
 
-  const parsed = parseVercelLogOutput(`${result.stdout}\n${result.stderr}`);
+  const parsed = parseVercelLogOutput(redactKnownSecrets(`${result.stdout}\n${result.stderr}`));
   assertCondition(result.status === 0, `${VERCEL_LOGS_COMMAND} exited ${result.status}: ${parsed.sample.join(' | ')}`);
   assertCondition(!parsed.hasLogs, `production Vercel ${level} logs are not empty: ${parsed.sample.join(' | ')}`);
 
