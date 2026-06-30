@@ -88,6 +88,40 @@ preflight의 persisted state까지 `ok`로 검증하려면 bootstrap과 함께
 `npm run smoke:pghd:strict-full`을 사용합니다. 이 옵션은 기존 client state를
 replace하지 않도록 bootstrap subject에서만 허용됩니다.
 
+운영 배포 후에는 실제 production URL과 Vercel runtime logs까지 묶어 아래
+스모크를 실행합니다.
+
+```bash
+PRODUCTION_RUN_LOG_ADMIN_TOKEN=<production-admin-token> \
+npm run smoke:production
+```
+
+이 스모크는 기본 URL `https://strava-run-log.vercel.app`에서 `/index.html`의
+PGHD review/quality UI 문자열, `/api/live/metrics`와
+`/api/apple-health/ingest`의 unauthenticated `401`, 인증된
+`/api/run-log/preflight`, 그리고 최근 10분의 Vercel error/warning logs가 비어
+있는지 확인합니다. 인증 토큰은 `PRODUCTION_RUN_LOG_ADMIN_TOKEN`,
+`RUN_LOG_ADMIN_TOKEN`, `LIVE_METRICS_TOKEN` 순서로 사용하며, 로컬에서는
+gitignore된 `.secrets/live_metrics.env`의 `LIVE_METRICS_TOKEN`도 자동으로
+읽습니다. 모든 토큰은 server-only secret으로만 다루고 git에 저장하지
+않습니다. Vercel sensitive env로 설정한 값은 CLI로 다시 읽을 수 없으므로
+운영자 shell 또는 별도 secret manager에서 주입합니다.
+
+preflight subject는 `pghd_connections`에서 Apple Health 연결과
+`org_clients` context가 있는 row를 우선 선택합니다. 명시적으로 고정하려면:
+
+```bash
+PRODUCTION_RUN_LOG_ADMIN_TOKEN=<production-admin-token> \
+PRODUCTION_PGHD_SUBJECT_PERSON_ID=<person-uuid> \
+npm run smoke:production
+```
+
+옵션:
+- `PRODUCTION_SMOKE_BASE_URL=https://preview.example`로 대상 URL 변경
+- `PRODUCTION_SMOKE_LOG_SINCE=30m`로 Vercel log 조회 창 변경
+- `PRODUCTION_SMOKE_SKIP_PREFLIGHT=1` 또는 `PRODUCTION_SMOKE_SKIP_LOGS=1`은
+  토큰/CLI가 없는 환경에서 공개 endpoint subset만 확인할 때 사용
+
 서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
 
 ```bash

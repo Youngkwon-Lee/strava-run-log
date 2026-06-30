@@ -12,12 +12,73 @@ import {
   shouldBootstrapOrgClient,
   shouldMaterializeSmokeState
 } from '../scripts/smoke_pghd_e2e.mjs';
+import {
+  buildProductionPreflightEvidence,
+  buildVercelLogsArgs,
+  parseVercelLogOutput
+} from '../scripts/smoke_production_readiness.mjs';
 import { buildSmokeCleanupReport } from '../scripts/check_pghd_smoke_cleanup.mjs';
 import { checkPhysioHandoffSurface } from '../scripts/check_pghd_physio_handoff_readiness.mjs';
 
 test('state smoke scripts can be imported without executing remote work', () => {
   assert.equal(makeDbSmokeSubjectId('20260622155633762'), '11111111-1111-4111-8111-622155633762');
   assert.equal(makeMaterializationSmokeSubjectId('20260622155633762'), '11111111-1111-4111-8111-622155633762');
+});
+
+test('production readiness smoke helpers can be imported without executing remote work', () => {
+  assert.deepEqual(
+    buildProductionPreflightEvidence({
+      summary: { status: 'warning' },
+      checks: [
+        { name: 'run_store_backend', status: 'ok' },
+        { name: 'state_materialization', status: 'warning', message: 'missing persisted state' }
+      ],
+      nextActions: ['materialize state snapshots']
+    }),
+    {
+      preflightStatus: 'warning',
+      preflightChecks: {
+        run_store_backend: 'ok',
+        state_materialization: 'warning'
+      },
+      preflightWarnings: [
+        {
+          name: 'state_materialization',
+          status: 'warning',
+          message: 'missing persisted state',
+          operatorHints: []
+        }
+      ],
+      preflightNextActions: ['materialize state snapshots']
+    }
+  );
+
+  assert.deepEqual(
+    buildVercelLogsArgs({ level: 'error', since: '10m', limit: '5' }),
+    [
+      'logs',
+      '--environment',
+      'production',
+      '--no-branch',
+      '--level',
+      'error',
+      '--since',
+      '10m',
+      '--no-follow',
+      '--limit',
+      '5',
+      '--expand',
+      '--no-color'
+    ]
+  );
+  assert.deepEqual(parseVercelLogOutput('Retrieving project...\nFetching logs...\nNo logs found for team/app\n'), {
+    hasLogs: false,
+    sample: []
+  });
+  assert.deepEqual(parseVercelLogOutput('error lambda GET /api/example\nstack line\n'), {
+    hasLogs: true,
+    sample: ['error lambda GET /api/example', 'stack line']
+  });
 });
 
 test('state materialization smoke validates traceability inputs', () => {
@@ -212,6 +273,36 @@ test('package pins Vercel Node runtime below Node 24 deprecation noise', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
   assert.deepEqual(packageJson.engines, { node: '22.x' });
+});
+
+test('package exposes production readiness smoke automation', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const script = readFileSync(new URL('../scripts/smoke_production_readiness.mjs', import.meta.url), 'utf8');
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+
+  assert.equal(
+    packageJson.scripts['smoke:production'],
+    'node scripts/smoke_production_readiness.mjs'
+  );
+  assert.match(script, /strava-run-log\.vercel\.app/);
+  assert.match(script, /api\/live\/metrics/);
+  assert.match(script, /api\/apple-health\/ingest/);
+  assert.match(script, /api\/run-log\/preflight/);
+  assert.match(script, /RUN_LOG_ADMIN_TOKEN/);
+  assert.match(script, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
+  assert.match(script, /LIVE_METRICS_TOKEN/);
+  assert.match(script, /\.secrets\/live_metrics\.env/);
+  assert.match(script, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
+  assert.match(script, /vercel logs/);
+  assert.match(script, /--no-branch/);
+  assert.match(script, /PGHD Review Brief/);
+  assert.match(script, /품질 컨텍스트/);
+  assert.match(script, /Insight 품질/);
+  assert.match(readme, /npm run smoke:production/);
+  assert.match(readme, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
+  assert.match(readme, /LIVE_METRICS_TOKEN/);
+  assert.match(readme, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
+  assert.match(readme, /Vercel error\/warning logs/);
 });
 
 test('package exposes combined PGHD Physio handoff readiness check', () => {
