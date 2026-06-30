@@ -161,6 +161,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   padding-bottom: 80px; /* space for dev drawer */
+  overflow-x: hidden;
 }
 
 /* Typography */
@@ -212,6 +213,11 @@ code {
 .grid {
   display: grid;
   gap: 24px;
+}
+
+.grid > *,
+.flex {
+  min-width: 0;
 }
 
 .grid-cols-2 {
@@ -966,6 +972,117 @@ header .nav-container {
   line-height: 1.5;
 }
 
+.pghd-quality-panel {
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-color);
+  padding: 12px;
+}
+
+.pghd-quality-panel.primary {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--border-color));
+}
+
+.pghd-quality-panel.warning {
+  border-color: color-mix(in srgb, var(--color-warning) 55%, var(--border-color));
+}
+
+.pghd-quality-panel.alert {
+  border-color: color-mix(in srgb, var(--color-alert) 55%, var(--border-color));
+}
+
+.pghd-quality-panel.info {
+  border-color: color-mix(in srgb, var(--color-info) 45%, var(--border-color));
+}
+
+.pghd-quality-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pghd-quality-panel-header strong {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.pghd-quality-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pghd-quality-facts.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pghd-quality-facts div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background-color: var(--bg-card-solid);
+}
+
+.pghd-quality-facts span,
+.pghd-quality-facts small {
+  display: block;
+}
+
+.pghd-quality-facts span {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.pghd-quality-facts small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.pghd-quality-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pghd-quality-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  background-color: var(--bg-card-solid);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.pghd-quality-chip.primary {
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+  background-color: var(--color-primary-glow);
+}
+
+.pghd-quality-chip.warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning-text);
+  background-color: var(--color-warning-glow);
+}
+
+.pghd-quality-chip.subtle {
+  color: var(--text-muted);
+}
+
 .pghd-source-evidence {
   margin-top: 10px;
   border-top: 1px solid var(--border-color);
@@ -1147,11 +1264,83 @@ header .nav-container {
 }
 
 @media (max-width: 640px) {
+  .container {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .grid-cols-2,
+  .grid-cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  header .nav-container {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .brand-section {
+    min-width: 0;
+  }
+
+  .brand-info {
+    min-width: 0;
+  }
+
+  .brand-info h1,
+  .brand-info p {
+    overflow-wrap: anywhere;
+  }
+
+  .nav-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .card-title-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .card-title-bar > * {
+    min-width: 0;
+  }
+
+  .card-title-bar h2,
+  .card-title-bar p,
+  .pghd-brief-subtitle,
+  .pghd-brief-note,
+  .badge {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .btn {
+    white-space: normal;
+  }
+
+  .progress-metrics-row,
+  .trend-strip {
+    grid-template-columns: 1fr;
+  }
+
   .pghd-brief-grid,
   .pghd-filter-grid,
   .pghd-preflight-grid,
   .pghd-state-overview,
-  .pghd-week-metrics {
+  .pghd-week-metrics,
+  .pghd-quality-facts,
+  .pghd-quality-facts.compact {
     grid-template-columns: 1fr;
   }
 }

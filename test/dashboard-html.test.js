@@ -72,6 +72,16 @@ test('dashboard prioritizes PGHD human state over raw activity lists', () => {
   assert.match(html, /weight/);
   assert.match(html, /pghd-source-evidence/);
   assert.match(html, /데이터 품질/);
+  assert.match(html, /품질 컨텍스트/);
+  assert.match(html, /Insight 품질/);
+  assert.match(html, /metricCoverage/);
+  assert.match(html, /missingMetricReasons/);
+  assert.match(html, /sourceActivityCount/);
+  assert.match(html, /latestRunAt/);
+  assert.match(html, /pghd-quality-panel/);
+  assert.match(html, /pghd-quality-chip/);
+  assert.match(html, /renderDataQualityPanel/);
+  assert.match(html, /renderInsightQualityContext/);
   assert.match(html, /주간 변화/);
   assert.match(html, /제한 사유/);
   assert.match(html, /현재 Human State 없음/);
@@ -111,4 +121,8 @@ test('dashboard viewport smoke script is registered', () => {
   assert.match(smokeScript, /mobile/);
   assert.match(smokeScript, /--screenshot=/);
   assert.match(smokeScript, /removeWithRetry/);
+  assert.match(smokeScript, /__smoke\/layout/);
+  assert.match(smokeScript, /scrollWidth/);
+  assert.match(smokeScript, /requestLog/);
+  assert.match(smokeScript, /rm\(screenshotPath/);
 });

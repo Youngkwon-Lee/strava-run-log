@@ -590,7 +590,7 @@ async function main() {
     if (!['ok', 'warning'].includes(preflightStatuses.get('physio_person_context'))) {
       throw new Error('preflight physio_person_context was not ok or warning');
     }
-    for (const name of ['connection_mapping', 'activity_ingest', 'weekly_summary']) {
+    for (const name of ['run_store_backend', 'connection_mapping', 'activity_ingest', 'weekly_summary']) {
       if (preflightStatuses.get(name) !== 'ok') {
         throw new Error(`preflight ${name} was not ok`);
       }

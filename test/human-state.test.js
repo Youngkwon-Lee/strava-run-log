@@ -12,7 +12,11 @@ test('buildWeeklyActivityStateSnapshots derives activity states from weekly summ
         total_km: 12,
         moving_time_sec: 4200,
         run_count: 2,
-        last_run_at: '2026-06-13T06:00:00Z'
+        first_run_at: '2026-06-09T06:00:00Z',
+        last_run_at: '2026-06-13T06:00:00Z',
+        average_pace_sec_per_km: 350,
+        average_heartrate: 146,
+        average_cadence: 170
       },
       {
         week_start: '2026-06-15',
@@ -21,7 +25,11 @@ test('buildWeeklyActivityStateSnapshots derives activity states from weekly summ
         total_km: 18,
         moving_time_sec: 6300,
         run_count: 3,
-        last_run_at: '2026-06-20T06:00:00Z'
+        first_run_at: '2026-06-16T06:00:00Z',
+        last_run_at: '2026-06-20T06:00:00Z',
+        average_pace_sec_per_km: 350,
+        average_heartrate: 150,
+        average_cadence: 172
       }
     ],
     {
@@ -45,6 +53,14 @@ test('buildWeeklyActivityStateSnapshots derives activity states from weekly summ
   assert.equal(snapshots[2].metadata.volumeTrend, 'up');
   assert.equal(snapshots[0].metadata.dataQuality, 'partial');
   assert.equal(snapshots[0].metadata.hasPriorBaseline, true);
+  assert.equal(snapshots[0].metadata.sourceActivityCount, 3);
+  assert.equal(snapshots[0].metadata.latestRunAt, '2026-06-20T06:00:00Z');
+  assert.deepEqual(snapshots[0].metadata.metricCoverage, {
+    pace: true,
+    heartRate: true,
+    cadence: true
+  });
+  assert.equal(snapshots[0].metadata.missingMetricReasons, undefined);
   assert.deepEqual(snapshots[0].metadata.insufficientDataReasons, ['short_history']);
 });
 
@@ -120,6 +136,17 @@ test('buildWeeklyActivityStateSnapshots marks limited history when baseline is m
     assert.equal(snapshot.metadata.dataQuality, 'limited');
     assert.equal(snapshot.metadata.dataQualityWeekCount, 1);
     assert.equal(snapshot.metadata.hasPriorBaseline, false);
+    assert.equal(snapshot.metadata.sourceActivityCount, 1);
+    assert.deepEqual(snapshot.metadata.metricCoverage, {
+      pace: false,
+      heartRate: false,
+      cadence: false
+    });
+    assert.deepEqual(snapshot.metadata.missingMetricReasons, [
+      'missing_average_pace',
+      'missing_average_heartrate',
+      'missing_average_cadence'
+    ]);
     assert.equal(snapshot.metadata.totalKmDelta, undefined);
     assert.equal(snapshot.metadata.runCountDelta, undefined);
     assert.ok(snapshot.metadata.insufficientDataReasons.includes('missing_prior_baseline'));

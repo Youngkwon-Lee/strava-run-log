@@ -164,11 +164,18 @@ Response:
   "summary": {
     "status": "warning",
     "ok": true,
-    "total": 5,
+    "total": 6,
     "warningCount": 1,
     "errorCount": 0
   },
   "checks": [
+    {
+      "name": "run_store_backend",
+      "status": "ok",
+      "message": "Run history store is configured for durable Supabase storage.",
+      "backend": "supabase",
+      "durable": true
+    },
     {
       "name": "physio_person_context",
       "status": "ok",
@@ -199,6 +206,10 @@ Response:
 
 Checks:
 
+- `run_store_backend`: verifies run history writes are configured for durable
+  storage. `RUN_STORE_BACKEND=supabase` with Supabase service env is `ok`;
+  local file storage is a warning; blocked Vercel file storage or unsupported
+  backend values are errors.
 - `physio_person_context`: reads PhysioApp `persons` and `org_clients` for the
   requested `subject_person_id`. Missing rows are warnings so standalone
   run-log deployments do not hard-fail.

@@ -1118,7 +1118,10 @@
           limited_load_comparison: '부하 비교 제한',
           no_runs_this_week: '이번 주 운동 없음',
           missing_weekly_distance: '거리 누락',
-          missing_moving_time: '운동 시간 누락'
+          missing_moving_time: '운동 시간 누락',
+          missing_average_pace: '평균 페이스 없음',
+          missing_average_heartrate: '평균 심박 없음',
+          missing_average_cadence: '평균 케이던스 없음'
         })[reason] || reason;
       }
 
@@ -1129,6 +1132,145 @@
         const prefix = delta > 0 ? '+' : '';
         const trend = meta.volumeTrend ? ` (${meta.volumeTrend})` : '';
         return `${prefix}${delta}km${trend}`;
+      }
+
+      function dataQualityTone(value) {
+        return ({
+          supported: 'primary',
+          partial: 'warning',
+          limited: 'alert'
+        })[value] || 'info';
+      }
+
+      function formatQualityDate(value) {
+        const time = Date.parse(value || '');
+        if (!Number.isFinite(time)) return '-';
+        return new Intl.DateTimeFormat('ko-KR', {
+          month: 'short',
+          day: 'numeric'
+        }).format(new Date(time));
+      }
+
+      function metricCoverageEntries(meta) {
+        const coverage = meta?.metricCoverage && typeof meta.metricCoverage === 'object' ? meta.metricCoverage : {};
+        return [
+          ['pace', 'Pace', coverage.pace],
+          ['heartRate', 'HR', coverage.heartRate],
+          ['cadence', 'Cadence', coverage.cadence]
+        ];
+      }
+
+      function renderMetricCoverage(meta) {
+        const entries = metricCoverageEntries(meta);
+        return `
+          <div class="pghd-quality-chip-row" aria-label="PGHD metric coverage">
+            ${entries.map(([, label, ok]) => `
+              <span class="pghd-quality-chip ${ok ? 'primary' : 'warning'}">${escapeHtml(label)} ${ok ? '있음' : '없음'}</span>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      function renderQualityReasonChips(meta) {
+        const reasons = [
+          ...(Array.isArray(meta?.insufficientDataReasons) ? meta.insufficientDataReasons : []),
+          ...(Array.isArray(meta?.missingMetricReasons) ? meta.missingMetricReasons : [])
+        ];
+        const unique = [...new Set(reasons)].slice(0, 5);
+        if (!unique.length) return '';
+        return `
+          <div class="pghd-quality-chip-row" aria-label="PGHD 제한 사유">
+            ${unique.map((reason) => `
+              <span class="pghd-quality-chip subtle">${escapeHtml(formatInsufficientDataReason(reason))}</span>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      function renderDataQualityPanel(item) {
+        const meta = item.metadata || {};
+        const inputCount = Array.isArray(item.inputs) ? item.inputs.length : 0;
+        const confidence = Number(item.confidence);
+        const sourceActivityCount = Number(meta.sourceActivityCount ?? meta.runCount);
+        const quality = meta.dataQuality || 'unknown';
+        const facts = [
+          ['품질', formatDataQuality(quality)],
+          ['신뢰도', Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '-'],
+          ['기준선', meta.hasPriorBaseline === true ? '있음' : meta.hasPriorBaseline === false ? '부족' : '-'],
+          ['기록 주수', meta.dataQualityWeekCount ? `${meta.dataQualityWeekCount}주` : '-'],
+          ['근거 활동', Number.isFinite(sourceActivityCount) ? `${sourceActivityCount}개` : `${inputCount}개`],
+          ['최근 활동', formatQualityDate(meta.latestRunAt || item.windowEnd)]
+        ];
+
+        return `
+          <div class="pghd-quality-panel ${dataQualityTone(quality)}">
+            <div class="pghd-quality-panel-header">
+              <strong>품질 컨텍스트</strong>
+              <span class="badge ${dataQualityTone(quality)}">${escapeHtml(formatDataQuality(quality))}</span>
+            </div>
+            <div class="pghd-quality-facts">
+              ${facts.map(([label, value]) => `
+                <div>
+                  <span>${escapeHtml(value)}</span>
+                  <small>${escapeHtml(label)}</small>
+                </div>
+              `).join('')}
+            </div>
+            ${renderMetricCoverage(meta)}
+            ${renderQualityReasonChips(meta)}
+          </div>
+        `;
+      }
+
+      function summarizeInsightQuality(insight) {
+        const snapshots = Array.isArray(insight?.sourceSnapshots) ? insight.sourceSnapshots.filter(Boolean) : [];
+        const levels = snapshots.map((snapshot) => snapshot.dataQuality).filter(Boolean);
+        const worst = levels.includes('limited') ? 'limited' : levels.includes('partial') ? 'partial' : levels.includes('supported') ? 'supported' : 'unknown';
+        const reasons = snapshots.flatMap((snapshot) => [
+          ...(Array.isArray(snapshot.insufficientDataReasons) ? snapshot.insufficientDataReasons : []),
+          ...(Array.isArray(snapshot.missingMetricReasons) ? snapshot.missingMetricReasons : [])
+        ]);
+        const activityCount = Math.max(
+          Number(insight?.sourceActivities?.length || 0),
+          ...snapshots.map((snapshot) => Number(snapshot.sourceActivityCount || 0)).filter(Number.isFinite),
+          0
+        );
+        const latestTimes = snapshots
+          .map((snapshot) => Date.parse(snapshot.latestRunAt || snapshot.windowEnd || ''))
+          .filter(Number.isFinite);
+        const latestTime = latestTimes.length ? Math.max(...latestTimes) : Number.NaN;
+        return {
+          snapshotCount: snapshots.length,
+          activityCount,
+          latestRunAt: Number.isFinite(latestTime) ? new Date(latestTime).toISOString() : '',
+          worst,
+          reasons: [...new Set(reasons)].slice(0, 4)
+        };
+      }
+
+      function renderInsightQualityContext(insight) {
+        const quality = summarizeInsightQuality(insight);
+        if (!quality.snapshotCount && !quality.activityCount) return '';
+        return `
+          <div class="pghd-quality-panel ${dataQualityTone(quality.worst)}">
+            <div class="pghd-quality-panel-header">
+              <strong>Insight 품질</strong>
+              <span class="badge ${dataQualityTone(quality.worst)}">${escapeHtml(formatDataQuality(quality.worst))}</span>
+            </div>
+            <div class="pghd-quality-facts compact">
+              <div><span>${quality.snapshotCount}</span><small>상태 근거</small></div>
+              <div><span>${quality.activityCount}</span><small>활동 근거</small></div>
+              <div><span>${escapeHtml(formatQualityDate(quality.latestRunAt))}</span><small>최근 활동</small></div>
+            </div>
+            ${quality.reasons.length ? `
+              <div class="pghd-quality-chip-row" aria-label="PGHD insight 제한 사유">
+                ${quality.reasons.map((reason) => `
+                  <span class="pghd-quality-chip subtle">${escapeHtml(formatInsufficientDataReason(reason))}</span>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
       }
 
       function formatTraceId(value) {
@@ -1397,9 +1539,6 @@
           const inputCount = Array.isArray(item.inputs) ? item.inputs.length : 0;
           const tone = stateTone(item.stateType, item.value);
           const dataQuality = formatDataQuality(meta.dataQuality);
-          const reasons = Array.isArray(meta.insufficientDataReasons)
-            ? meta.insufficientDataReasons.map(formatInsufficientDataReason).join(', ')
-            : '';
           return `
             <div class="pghd-week-card">
               <div class="pghd-week-header">
@@ -1418,7 +1557,7 @@
                 <div><span>${meta.totalKm ?? '-'}</span><small>주간 km</small></div>
                 <div><span>${meta.loadRatio ?? '-'}</span><small>부하 비율</small></div>
               </div>
-              ${reasons ? `<p class="pghd-data-quality-note">제한 사유: ${escapeHtml(reasons)}</p>` : ''}
+              ${renderDataQualityPanel(item)}
               ${renderStateInputs(item.inputs)}
             </div>
           `;
@@ -1470,6 +1609,7 @@
               ${renderInsightList(item.evidence)}
               ${renderInsightList(item.suggestedQuestions)}
               ${renderInsightList(item.suggestedActions)}
+              ${renderInsightQualityContext(item)}
               ${renderInsightSourceActivities(item.sourceActivities)}
               <div class="pghd-note-draft">
                 <div class="pghd-note-draft-header">

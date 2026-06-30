@@ -34,6 +34,16 @@ test('buildEncounterInsights turns high fatigue into encounter review guidance',
         totalKmDelta: 14,
         volumeTrend: 'up',
         dataQuality: 'partial',
+        dataQualityWeekCount: 3,
+        hasPriorBaseline: true,
+        sourceActivityCount: 4,
+        latestRunAt: '2026-06-21T06:00:00Z',
+        metricCoverage: {
+          pace: true,
+          heartRate: true,
+          cadence: false
+        },
+        missingMetricReasons: ['missing_average_cadence'],
         insufficientDataReasons: ['short_history']
       }
     },
@@ -68,6 +78,13 @@ test('buildEncounterInsights turns high fatigue into encounter review guidance',
   assert.match(insights[0].noteDraft, /PGHD review: Review recent load/);
   assert.match(insights[0].noteDraft, /Clinical note: PGHD-derived context only/);
   assert.ok(insights[0].sourceSnapshots.some((snapshot) => snapshot.volumeTrend === 'up'));
+  assert.equal(insights[0].sourceSnapshots[0].sourceActivityCount, 4);
+  assert.deepEqual(insights[0].sourceSnapshots[0].metricCoverage, {
+    pace: true,
+    heartRate: true,
+    cadence: false
+  });
+  assert.deepEqual(insights[0].sourceSnapshots[0].missingMetricReasons, ['missing_average_cadence']);
   assert.equal(insights[0].sourceActivities[0].pghdActivityEventId, '66666666-6666-4666-8666-666666666666');
   assert.equal(insights[0].sourceActivities[0].name, 'Morning rehab run');
   assert.ok(insights.some((insight) => insight.insightType === 'load_ramp'));
