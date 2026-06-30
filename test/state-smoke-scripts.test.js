@@ -372,6 +372,10 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(workflow, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
   assert.match(workflow, /VERCEL_TOKEN/);
   assert.match(workflow, /VERCEL_PROJECT_ID/);
+  assert.match(workflow, /actions\/checkout@v7\.0\.0/);
+  assert.match(workflow, /actions\/setup-node@v6\.4\.0/);
+  assert.doesNotMatch(workflow, /actions\/checkout@v4/);
+  assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
   assert.match(workflow, /vercel@50\.40\.0/);
   assert.match(workflow, /npm run smoke:production/);
 });
