@@ -358,6 +358,10 @@ export function parseVercelLogOutput(output) {
     /^> This information is used to shape the CLI roadmap/i,
     /^> You can learn more, including how to opt-out/i,
     /^> https:\/\/vercel\.com\/docs\/cli\/about-telemetry/i,
+    /^─+$/,
+    /^Update available! v[\d.]+/i,
+    /^Changelog: https:\/\/github\.com\/vercel\/vercel\/releases\//i,
+    /^Run `npm i -g vercel@latest` to update\./i,
     new RegExp(`^${VERCEL_LOGS_COMMAND}$`, 'i')
   ];
   const lines = stripAnsi(output)
