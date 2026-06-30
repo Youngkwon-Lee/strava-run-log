@@ -71,6 +71,39 @@ test('production readiness smoke helpers can be imported without executing remot
       '--no-color'
     ]
   );
+  assert.deepEqual(
+    buildVercelLogsArgs({
+      level: 'warning',
+      since: '30m',
+      limit: '3',
+      env: {
+        VERCEL_PROJECT_ID: 'prj_example',
+        VERCEL_SCOPE: 'example-team',
+        VERCEL_TOKEN: 'vercel-token'
+      }
+    }),
+    [
+      'logs',
+      '--environment',
+      'production',
+      '--no-branch',
+      '--level',
+      'warning',
+      '--since',
+      '30m',
+      '--no-follow',
+      '--limit',
+      '3',
+      '--expand',
+      '--no-color',
+      '--project',
+      'prj_example',
+      '--scope',
+      'example-team',
+      '--token',
+      'vercel-token'
+    ]
+  );
   assert.deepEqual(parseVercelLogOutput('Retrieving project...\nFetching logs...\nNo logs found for team/app\n'), {
     hasLogs: false,
     sample: []
@@ -279,6 +312,7 @@ test('package exposes production readiness smoke automation', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const script = readFileSync(new URL('../scripts/smoke_production_readiness.mjs', import.meta.url), 'utf8');
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const workflow = readFileSync(new URL('../.github/workflows/production-smoke.yml', import.meta.url), 'utf8');
 
   assert.equal(
     packageJson.scripts['smoke:production'],
@@ -291,6 +325,8 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(script, /RUN_LOG_ADMIN_TOKEN/);
   assert.match(script, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
   assert.match(script, /LIVE_METRICS_TOKEN/);
+  assert.match(script, /VERCEL_TOKEN/);
+  assert.match(script, /VERCEL_PROJECT_ID/);
   assert.match(script, /\.secrets\/run_log_admin\.env/);
   assert.match(script, /\.secrets\/live_metrics\.env/);
   assert.match(script, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
@@ -302,9 +338,22 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(readme, /npm run smoke:production/);
   assert.match(readme, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
   assert.match(readme, /LIVE_METRICS_TOKEN/);
+  assert.match(readme, /GitHub Actions/);
+  assert.match(readme, /VERCEL_TOKEN/);
+  assert.match(readme, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
   assert.match(readme, /\.secrets\/run_log_admin\.env/);
   assert.match(readme, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
   assert.match(readme, /Vercel error\/warning logs/);
+  assert.match(workflow, /name: Production Smoke/);
+  assert.match(workflow, /workflow_dispatch/);
+  assert.match(workflow, /push:/);
+  assert.match(workflow, /branches:\n\s+- main/);
+  assert.match(workflow, /RUN_LOG_ADMIN_TOKEN/);
+  assert.match(workflow, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
+  assert.match(workflow, /VERCEL_TOKEN/);
+  assert.match(workflow, /VERCEL_PROJECT_ID/);
+  assert.match(workflow, /vercel@50\.40\.0/);
+  assert.match(workflow, /npm run smoke:production/);
 });
 
 test('package exposes combined PGHD Physio handoff readiness check', () => {

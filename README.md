@@ -125,6 +125,24 @@ npm run smoke:production
 - `PRODUCTION_SMOKE_SKIP_PREFLIGHT=1` 또는 `PRODUCTION_SMOKE_SKIP_LOGS=1`은
   토큰/CLI가 없는 환경에서 공개 endpoint subset만 확인할 때 사용
 
+GitHub Actions에서도 같은 production smoke를 실행합니다.
+
+- Workflow: `.github/workflows/production-smoke.yml`
+- Trigger: `main` push 후 자동 실행, 또는 GitHub Actions UI의 manual
+  `workflow_dispatch`
+- Required GitHub Secrets:
+  - `RUN_LOG_ADMIN_TOKEN`: production `/api/run-log/preflight` 인증 토큰
+  - `PRODUCTION_PGHD_SUBJECT_PERSON_ID`: preflight 대상 production person UUID
+  - `VERCEL_TOKEN`: `vercel logs` 조회용 Vercel CLI token
+- Optional GitHub Secret/Variable:
+  - `VERCEL_PROJECT_ID`: Vercel project id. 없으면 repository variable
+    `VERCEL_PROJECT_NAME` 또는 기본값 `strava-run-log` 사용
+  - `VERCEL_PROJECT_NAME`: repository variable로 설정 가능
+
+`main` push trigger는 Vercel production deployment가 alias되기 전 smoke가 먼저
+뛰지 않도록 기본 90초 대기합니다. 수동 실행에서는 `base_url`, `log_since`,
+`wait_seconds`를 입력으로 바꿀 수 있습니다.
+
 서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
 
 ```bash

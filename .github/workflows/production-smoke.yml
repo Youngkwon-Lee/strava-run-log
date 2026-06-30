@@ -1,0 +1,97 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Production base URL to verify.
+        required: false
+        default: https://strava-run-log.vercel.app
+      log_since:
+        description: Vercel runtime log window.
+        required: false
+        default: 10m
+      wait_seconds:
+        description: Seconds to wait before running the smoke.
+        required: false
+        default: '0'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  production-smoke:
+    name: Production readiness smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRODUCTION_SMOKE_BASE_URL: ${{ inputs.base_url || 'https://strava-run-log.vercel.app' }}
+      PRODUCTION_SMOKE_LOG_SINCE: ${{ inputs.log_since || '10m' }}
+      PRODUCTION_SMOKE_WAIT_SECONDS: ${{ github.event_name == 'push' && '90' || inputs.wait_seconds || '0' }}
+      PRODUCTION_RUN_LOG_ADMIN_TOKEN: ${{ secrets.RUN_LOG_ADMIN_TOKEN }}
+      RUN_LOG_ADMIN_TOKEN: ${{ secrets.RUN_LOG_ADMIN_TOKEN }}
+      PRODUCTION_PGHD_SUBJECT_PERSON_ID: ${{ secrets.PRODUCTION_PGHD_SUBJECT_PERSON_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME || 'strava-run-log' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate smoke secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in RUN_LOG_ADMIN_TOKEN PRODUCTION_PGHD_SUBJECT_PERSON_ID VERCEL_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing GitHub secret::$name is required for production smoke"
+              missing=1
+            fi
+          done
+          if [ -z "$VERCEL_PROJECT_ID" ] && [ -z "$VERCEL_PROJECT_NAME" ]; then
+            echo "::error title=Missing Vercel project::Set VERCEL_PROJECT_ID secret or VERCEL_PROJECT_NAME repository variable"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Wait for production deployment
+        shell: bash
+        run: |
+          if ! [[ "$PRODUCTION_SMOKE_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+            echo "::error title=Invalid wait_seconds::wait_seconds must be a non-negative integer"
+            exit 1
+          fi
+          if [ "$PRODUCTION_SMOKE_WAIT_SECONDS" -gt 0 ]; then
+            sleep "$PRODUCTION_SMOKE_WAIT_SECONDS"
+          fi
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@50.40.0
+
+      - name: Show tool versions
+        run: |
+          node --version
+          npm --version
+          vercel --version
+
+      - name: Check production smoke script syntax
+        run: node --check scripts/smoke_production_readiness.mjs
+
+      - name: Check production smoke static contract
+        run: node --test test/state-smoke-scripts.test.js
+
+      - name: Run production smoke
+        run: npm run smoke:production
