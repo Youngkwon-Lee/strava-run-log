@@ -1,10 +1,10 @@
-import encounterInsights from './encounter-insights.js';
-import encounterNoteDrafts from './encounter-note-drafts.js';
-import preflight from './preflight.js';
-import promoteToActivitySession from './promote-to-activity-session.js';
-import stateSnapshots from './state-snapshots.js';
-import timeline from './timeline.js';
-import weeklySummaries from './weekly-summaries.js';
+import encounterInsights from '../../lib/api/run-log/encounter-insights.js';
+import encounterNoteDrafts from '../../lib/api/run-log/encounter-note-drafts.js';
+import preflight from '../../lib/api/run-log/preflight.js';
+import promoteToActivitySession from '../../lib/api/run-log/promote-to-activity-session.js';
+import stateSnapshots from '../../lib/api/run-log/state-snapshots.js';
+import timeline from '../../lib/api/run-log/timeline.js';
+import weeklySummaries from '../../lib/api/run-log/weekly-summaries.js';
 
 const ROUTES = new Map([
   ['encounter-insights', encounterInsights],
