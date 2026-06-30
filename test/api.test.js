@@ -2028,6 +2028,7 @@ test('run-log encounter note drafts validates clinical note context', async () =
 test('run-log PGHD preflight summarizes connection, ingest, weekly, and state readiness', async () => {
   withEnv({
     RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    RUN_STORE_BACKEND: 'supabase',
     SUPABASE_URL: 'https://project.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
   });
@@ -2132,7 +2133,14 @@ test('run-log PGHD preflight summarizes connection, ingest, weekly, and state re
   assert.equal(res.body.summary.status, 'ok');
   assert.deepEqual(
     res.body.checks.map((item) => `${item.name}:${item.status}`),
-    ['physio_person_context:ok', 'connection_mapping:ok', 'activity_ingest:ok', 'weekly_summary:ok', 'state_materialization:ok']
+    [
+      'run_store_backend:ok',
+      'physio_person_context:ok',
+      'connection_mapping:ok',
+      'activity_ingest:ok',
+      'weekly_summary:ok',
+      'state_materialization:ok'
+    ]
   );
   assert.equal(fetchMock.mock.callCount(), 6);
 });
@@ -2140,6 +2148,7 @@ test('run-log PGHD preflight summarizes connection, ingest, weekly, and state re
 test('run-log PGHD preflight reports actionable warnings for missing rows and missing state table', async () => {
   withEnv({
     RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    RUN_STORE_BACKEND: 'supabase',
     SUPABASE_URL: 'https://project.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
   });
@@ -2174,12 +2183,72 @@ test('run-log PGHD preflight reports actionable warnings for missing rows and mi
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.summary.status, 'warning');
   assert.equal(res.body.summary.warningCount, 5);
-  assert.equal(res.body.checks[0].name, 'physio_person_context');
-  assert.equal(res.body.checks[0].status, 'warning');
-  assert.equal(res.body.checks[4].missingTable, true);
+  assert.equal(res.body.checks[0].name, 'run_store_backend');
+  assert.equal(res.body.checks[0].status, 'ok');
+  assert.equal(res.body.checks[1].name, 'physio_person_context');
+  assert.equal(res.body.checks[1].status, 'warning');
+  assert.equal(res.body.checks[5].missingTable, true);
   assert.match(res.body.nextActions.join('\n'), /PhysioApp persons\.id/);
   assert.match(res.body.nextActions.join('\n'), /provider account mapping/);
   assert.match(res.body.nextActions.join('\n'), /Human State snapshot migration/);
+});
+
+test('run-log PGHD preflight reports blocked Vercel file backend as an operator error', async () => {
+  withEnv({
+    RUN_LOG_ADMIN_TOKEN: 'admin-secret',
+    VERCEL: '1',
+    RUN_STORE_BACKEND: undefined,
+    RUN_STORE_ALLOW_EPHEMERAL_FILE: undefined,
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const { default: handler } = await importFresh('../api/run-log/preflight.js');
+
+  const subjectPersonId = '11111111-1111-4111-8111-111111111111';
+  mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    if (href.includes('/rest/v1/persons?')) return Response.json([{ id: subjectPersonId }]);
+    if (href.includes('/rest/v1/org_clients?')) {
+      return Response.json([
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          organization_id: '66666666-6666-4666-8666-666666666666',
+          person_id: subjectPersonId,
+          status: 'active'
+        }
+      ]);
+    }
+    if (href.includes('/rest/v1/pghd_connections?')) {
+      return Response.json([
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          person_id: subjectPersonId,
+          provider: 'apple_health',
+          provider_user_id: 'youngkwon',
+          connection_status: 'connected'
+        }
+      ]);
+    }
+    if (href.includes('/rest/v1/run_log_runs?')) return Response.json([{ id: 'run-1', subject_person_id: subjectPersonId }]);
+    if (href.includes('/rest/v1/run_log_weekly_summaries?')) return Response.json([{ week_start: '2026-06-15', subject_person_id: subjectPersonId }]);
+    if (href.includes('/rest/v1/human_state_snapshots?')) return Response.json([{ id: 'state-1', subject_person_id: subjectPersonId }]);
+    throw new Error(`unexpected fetch: ${href}`);
+  });
+
+  const res = await callHandler(handler, {
+    method: 'GET',
+    headers: { authorization: 'Bearer admin-secret' },
+    query: { subject_person_id: subjectPersonId },
+    body: {}
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.summary.status, 'error');
+  assert.equal(res.body.summary.errorCount, 1);
+  assert.equal(res.body.checks[0].name, 'run_store_backend');
+  assert.equal(res.body.checks[0].status, 'error');
+  assert.equal(res.body.checks[0].durable, false);
+  assert.match(res.body.nextActions.join('\n'), /RUN_STORE_BACKEND=supabase/);
 });
 
 test('PGHD connections requires admin auth', async () => {

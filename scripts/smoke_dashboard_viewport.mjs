@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 
 const root = process.cwd();
 const outputDir = resolve(process.env.DASHBOARD_VIEWPORT_OUTPUT_DIR || 'output/dashboard-viewport-smoke');
+const layoutReports = [];
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -58,6 +59,39 @@ async function serveFile(req, res) {
 
   try {
     let body = await readFile(filePath);
+    if (pathname === '/index.html' && url.searchParams.has('smoke_viewport')) {
+      const viewportName = url.searchParams.get('smoke_viewport') || 'viewport';
+      const probe = `
+        <script>
+          setTimeout(() => {
+            const elements = [...document.querySelectorAll('body *')].map((node) => {
+              const rect = node.getBoundingClientRect();
+              return {
+                tag: node.tagName.toLowerCase(),
+                id: node.id || '',
+                className: typeof node.className === 'string' ? node.className : '',
+                left: Math.round(rect.left),
+                right: Math.round(rect.right),
+                width: Math.round(rect.width),
+                text: (node.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 80)
+              };
+            }).filter((item) => item.width > 0 && (item.left < -1 || item.right > window.innerWidth + 1)).slice(0, 20);
+            fetch('/__smoke/layout', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                viewport: ${JSON.stringify(viewportName)},
+                innerWidth: window.innerWidth,
+                scrollWidth: document.documentElement.scrollWidth,
+                bodyScrollWidth: document.body.scrollWidth,
+                overflowing: elements
+              })
+            }).catch(() => {});
+          }, 700);
+        </script>
+      `;
+      body = Buffer.from(body.toString('utf8').replace('</body>', `${probe}</body>`), 'utf8');
+    }
     if (pathname === '/index.css') {
       body = Buffer.from(
         body
@@ -80,6 +114,12 @@ async function serveFile(req, res) {
     res.writeHead(404);
     res.end('not found');
   }
+}
+
+async function readRequestBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function listen(server) {
@@ -177,9 +217,8 @@ async function pngDimensions(path) {
   };
 }
 
-async function captureViewport({ chromePath, baseUrl, profileDir, name, width, height }) {
-  const screenshotPath = join(outputDir, `${name}.png`);
-  const commonArgs = [
+function viewportChromeArgs({ profileDir, name, width, height }) {
+  return [
     '--headless=new',
     '--disable-gpu',
     '--disable-dev-shm-usage',
@@ -192,12 +231,39 @@ async function captureViewport({ chromePath, baseUrl, profileDir, name, width, h
     '--hide-scrollbars',
     '--virtual-time-budget=3000'
   ];
+}
+
+async function verifyServerReady(baseUrl) {
+  const response = await fetch(`${baseUrl}/index.html`);
+  const html = await response.text();
+  if (!response.ok || !html.includes('PGHD Review Brief')) {
+    throw new Error(`dashboard static server did not return index.html from ${baseUrl}`);
+  }
+}
+
+async function captureViewport({ chromePath, baseUrl, profileDir, requestLog, name, width, height }) {
+  const screenshotPath = join(outputDir, `${name}.png`);
+  const requestStart = requestLog.length;
+  await rm(screenshotPath, { force: true });
 
   await runChrome(chromePath, [
-    ...commonArgs,
+    ...viewportChromeArgs({ profileDir, name, width, height }),
     `--screenshot=${screenshotPath}`,
-    `${baseUrl}/index.html`
+    `${baseUrl}/index.html?smoke_viewport=${encodeURIComponent(name)}`
   ], 30_000, screenshotPath);
+
+  const viewportRequests = requestLog.slice(requestStart);
+  if (!viewportRequests.some((pathname) => pathname === '/index.html' || pathname === '/')) {
+    throw new Error(`${name} viewport did not request dashboard index.html`);
+  }
+  const report = layoutReports.find((item) => item.viewport === name);
+  if (!report) {
+    throw new Error(`${name} viewport did not report layout metrics`);
+  }
+  const scrollWidth = Math.max(Number(report.scrollWidth || 0), Number(report.bodyScrollWidth || 0));
+  if (scrollWidth > Number(report.innerWidth || width) + 2) {
+    throw new Error(`${name} viewport has horizontal overflow: ${scrollWidth}px > ${report.innerWidth}px ${JSON.stringify(report.overflowing || [])}`);
+  }
 
   const dimensions = await pngDimensions(screenshotPath);
   if (dimensions.width !== width || dimensions.height !== height) {
@@ -214,11 +280,26 @@ async function main() {
   const chromePath = resolveChrome();
   const profileDir = await mkdtemp(join(tmpdir(), 'run-log-dashboard-smoke-'));
   await mkdir(outputDir, { recursive: true });
+  const requestLog = [];
 
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    requestLog.push(url.pathname);
+    if (url.pathname === '/__smoke/layout') {
+      try {
+        layoutReports.push(JSON.parse(await readRequestBody(req)));
+        res.writeHead(204, { 'cache-control': 'no-store' });
+        res.end();
+      } catch (error) {
+        res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end(error.message);
+      }
+      return;
+    }
     void serveFile(req, res);
   });
   const baseUrl = await listen(server);
+  await verifyServerReady(baseUrl);
   const html = await readFile(resolve(root, 'index.html'), 'utf8');
   for (const expected of [
     'PGHD Review Brief',
@@ -234,8 +315,8 @@ async function main() {
 
   try {
     const results = [];
-    results.push(await captureViewport({ chromePath, baseUrl, profileDir, name: 'desktop', width: 1440, height: 1100 }));
-    results.push(await captureViewport({ chromePath, baseUrl, profileDir, name: 'mobile', width: 390, height: 1200 }));
+    results.push(await captureViewport({ chromePath, baseUrl, profileDir, requestLog, name: 'desktop', width: 1440, height: 1100 }));
+    results.push(await captureViewport({ chromePath, baseUrl, profileDir, requestLog, name: 'mobile', width: 390, height: 1200 }));
 
     for (const result of results) {
       console.log(`${result.name}: ${result.width}x${result.height}, ${result.bytes} bytes, ${result.screenshotPath}`);

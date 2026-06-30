@@ -329,3 +329,52 @@ test('run store rejects raw payloads over size budget', async () => {
     /run raw payload exceeds RUN_STORE_MAX_RAW_BYTES/
   );
 });
+
+test('run store blocks implicit file backend on Vercel', async () => {
+  setEnv({
+    VERCEL: '1',
+    RUN_STORE_BACKEND: undefined,
+    RUN_STORE_ALLOW_EPHEMERAL_FILE: undefined
+  });
+
+  const { readStoredRuns } = await importFresh('../lib/run-store.js');
+
+  await assert.rejects(
+    () => readStoredRuns(),
+    /RUN_STORE_BACKEND=file uses ephemeral Vercel \/tmp storage/
+  );
+});
+
+test('run store allows Vercel file backend only when explicitly enabled', async () => {
+  setEnv({
+    VERCEL: '1',
+    RUN_STORE_BACKEND: 'file',
+    RUN_STORE_ALLOW_EPHEMERAL_FILE: '1'
+  });
+
+  const { readStoredRuns, upsertStoredRun } = await importFresh('../lib/run-store.js');
+  const path = await tempRunStorePath();
+
+  await upsertStoredRun(
+    {
+      id: 'vercel-temp-001',
+      source: 'smoke-test',
+      startDate: '2026-06-20T06:00:00Z',
+      distanceMeters: 5000,
+      movingTimeSec: 1800
+    },
+    { path }
+  );
+
+  const runs = await readStoredRuns({ path });
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].id, 'vercel-temp-001');
+});
+
+test('run store rejects unsupported backend names', async () => {
+  setEnv({ RUN_STORE_BACKEND: 'redis' });
+
+  const { readStoredRuns } = await importFresh('../lib/run-store.js');
+
+  await assert.rejects(() => readStoredRuns(), /unsupported RUN_STORE_BACKEND: redis/);
+});

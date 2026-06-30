@@ -72,8 +72,8 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run smoke:pghd
 
 스모크 결과의 `evidence`에는 `preflightChecks`, `preflightWarnings`,
 `preflightNextActions`가 포함됩니다. `preflightStatus: "warning"`일 때는
-이 필드로 PhysioApp person/org-client context 문제인지, persisted Human State
-materialization 문제인지 바로 구분합니다.
+이 필드로 durable run store 설정 문제인지, PhysioApp person/org-client context
+문제인지, persisted Human State materialization 문제인지 바로 구분합니다.
 `connectionSelectionMode`과 `selectedOrgClientContext`는 smoke가 encounter
 handoff에 적합한 org-client subject를 찾았는지 보여줍니다.
 staging에서 fallback subject를 허용하지 않으려면
@@ -494,7 +494,7 @@ HealthKit 권한을 가진 iPhone 브리지 앱이 Apple Health 러닝 요약을
 - `400`: payload 검증 실패
 - `401`: 토큰 또는 signature 오류
 
-이 endpoint는 payload 검증, 요약, 코칭, Discord 리포트와 함께 공통 run history store에 기록을 upsert합니다. 단, 기본 파일 저장소는 로컬/MVP용이며 Vercel의 `/tmp` 저장은 재시작 시 사라질 수 있습니다. 장기 운영은 외부 DB/KV/S3 어댑터가 필요합니다.
+이 endpoint는 payload 검증, 요약, 코칭, Discord 리포트와 함께 공통 run history store에 기록을 upsert합니다. 단, 기본 파일 저장소는 로컬/MVP용입니다. Vercel에서는 파일 backend가 기본 차단되며, 장기 운영은 Supabase/Postgres 또는 다른 외부 DB/KV/S3 어댑터가 필요합니다.
 
 ### `GET /api/strava/activities`
 
@@ -536,7 +536,7 @@ Supabase 모드에서는 `pghd_activity_events`가 범용 PGHD 원본 activity e
 
 기본 저장 위치:
 - 로컬: `.data/runs.jsonl`
-- Vercel/serverless: `/tmp/strava-run-log/runs.jsonl`
+- Vercel/serverless: 기본 차단. 임시 smoke/dev에서만 `RUN_STORE_ALLOW_EPHEMERAL_FILE=1`로 `/tmp/strava-run-log/runs.jsonl` 허용
 - 직접 지정: `RUN_STORE_PATH=/path/to/runs.jsonl`
 - Supabase/Postgres: `RUN_STORE_BACKEND=supabase`
 
@@ -547,7 +547,7 @@ curl "https://<your-domain>/api/strava/activities?source=stored&days=90&limit=50
 curl "https://<your-domain>/api/strava/weekly-report?source=stored"
 ```
 
-주의: `/tmp` 기반 serverless 파일 저장은 인스턴스 재시작 시 사라질 수 있습니다. 장기 운영에서는 같은 `lib/run-store.js` 경계를 Postgres/KV/S3 같은 외부 저장소 어댑터로 교체하세요.
+주의: `/tmp` 기반 serverless 파일 저장은 인스턴스 재시작 시 사라질 수 있기 때문에 Vercel에서는 기본 차단됩니다. 임시 검증에만 `RUN_STORE_BACKEND=file`과 `RUN_STORE_ALLOW_EPHEMERAL_FILE=1`을 함께 사용하고, 장기 운영에서는 `RUN_STORE_BACKEND=supabase` 또는 같은 `lib/run-store.js` 경계를 유지한 외부 저장소 어댑터를 사용하세요.
 
 자세한 저장 계약과 한계는 [`docs/run-history-store.md`](docs/run-history-store.md)를 봅니다. PGHD 데이터 관리 정책은 [`docs/pghd-data-management.md`](docs/pghd-data-management.md)를 봅니다.
 

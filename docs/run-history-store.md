@@ -13,7 +13,9 @@ Module:
 Default paths:
 
 - Local: `.data/runs.jsonl`
-- Vercel/serverless: `/tmp/strava-run-log/runs.jsonl`
+- Vercel/serverless: blocked by default. Use `RUN_STORE_ALLOW_EPHEMERAL_FILE=1`
+  only for temporary smoke/dev runs that intentionally write
+  `/tmp/strava-run-log/runs.jsonl`.
 - Override: `RUN_STORE_PATH=/absolute/path/to/runs.jsonl`
 - Supabase/Postgres: `RUN_STORE_BACKEND=supabase`
 
@@ -136,12 +138,13 @@ curl -X POST "https://<your-domain>/api/run-log/state-snapshots" \
 
 The file backend is an MVP persistence layer, not a production database.
 
-- Vercel `/tmp` data can disappear across cold starts or deployments.
+- Vercel file storage is blocked by default because `/tmp` data can disappear
+  across cold starts or deployments.
 - Concurrent writes are simple read-modify-write operations, not transactional.
 - There is no user-level access control inside the store file.
 - There is no migration/versioning system yet.
 
-For production, set `RUN_STORE_BACKEND=supabase` or keep the `lib/run-store.js` API boundary and replace the file implementation with another durable backend.
+For production, set `RUN_STORE_BACKEND=supabase` or keep the `lib/run-store.js` API boundary and replace the file implementation with another durable backend. If a Vercel smoke/dev run intentionally needs the old ephemeral behavior, set both `RUN_STORE_BACKEND=file` and `RUN_STORE_ALLOW_EPHEMERAL_FILE=1`.
 
 ## Supabase Setup
 
