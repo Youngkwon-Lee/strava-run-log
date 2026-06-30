@@ -13,6 +13,7 @@
     "gate:pghd:strict-staging": "npm run smoke:pghd:strict-full && npm run check:pghd:physio-handoff -- --static-only && npm run check:pghd:smoke-cleanup",
     "gate:pghd:decision": "node scripts/run_pghd_release_decision.mjs",
     "smoke:dashboard:viewport": "node scripts/smoke_dashboard_viewport.mjs",
+    "smoke:production": "node scripts/smoke_production_readiness.mjs",
     "smoke:pghd": "node scripts/smoke_pghd_e2e.mjs",
     "smoke:pghd:strict-org-client": "PGHD_SMOKE_BOOTSTRAP_ORG_CLIENT=1 PGHD_SMOKE_REQUIRE_ORG_CLIENT_CONTEXT=1 node scripts/smoke_pghd_e2e.mjs",
     "smoke:pghd:strict-full": "PGHD_SMOKE_BOOTSTRAP_ORG_CLIENT=1 PGHD_SMOKE_REQUIRE_ORG_CLIENT_CONTEXT=1 PGHD_SMOKE_MATERIALIZE_STATE=1 node scripts/smoke_pghd_e2e.mjs",
