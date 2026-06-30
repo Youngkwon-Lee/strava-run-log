@@ -42,6 +42,10 @@ the existing PhysioApp projections/workflows.
 - Focused post-apply SQL check passed.
 - Single owner migration version `20260623051621` was marked applied after the
   focused check.
+- Remote smoke now passes:
+  - `npm run check:pghd:status`
+  - `npm run check:pghd:smoke-cleanup`
+  - `npm run check:pghd:migration-history`
 
 ## Evidence
 
@@ -50,10 +54,13 @@ Run-log:
 - `npm test`: 150 passed
 - `npm run check:pghd:status`: passed
 - `npm run check:pghd:smoke-cleanup`: passed
+- `npm run check:pghd:migration-history`: passed
+- Vercel preview deployment: passed
 - `git diff --check`: passed
 
 PhysioApp:
 
+- Consumer PR merged: <https://github.com/Youngkwon-Lee/physio_app/pull/354>
 - `pnpm run test:e2e:pghd-note-draft`: 3 passed in 2.7 minutes
 - PGHD component/server/client Jest tests: passed
 - PGHD consume route Jest test: passed
@@ -62,10 +69,9 @@ PhysioApp:
 
 ## Remaining Debt
 
-Remote migration history still has old local PGHD migration versions pending in
-the Run-log repo history check. Do not broad-repair them in this PR. The required
+Older local Run-log PGHD migration versions remain intentionally unrepaired in
+remote migration history. Do not broad-repair them in this PR. The required
 schema is present and verified through owner-lineage apply plus remote smoke.
-Treat older migration-history reconciliation as a separate task.
 
 ## Supporting Docs
 

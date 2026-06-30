@@ -2,6 +2,10 @@
 
 Date: 2026-06-23
 
+Status update: PhysioApp consumer PR #354 merged, and Run-log PR #1 Vercel
+preview now passes after consolidating deployed API functions under catch-all
+routes.
+
 ## Migration Path
 
 - Broad `supabase db push` from `strava-run-log` remains forbidden.
@@ -45,9 +49,16 @@ activity layer. It links forward into existing projections through:
   - Evidence: dashboard inline scripts compile and PGHD evidence UI strings are present
 - `git diff --check`
   - Result: pass
+- Vercel preview
+  - Result: pass
+  - Evidence: deployed API functions were reduced from 20 to 8 to stay within
+    the Hobby plan serverless function limit.
 
 ## PhysioApp Consumer Evidence
 
+- Consumer PR:
+  - URL: <https://github.com/Youngkwon-Lee/physio_app/pull/354>
+  - Result: merged
 - `pnpm run test:e2e:pghd-note-draft`
   - Working directory: `/Users/youngkwon/projects/physio_app`
   - Result: pass
