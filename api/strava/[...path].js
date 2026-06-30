@@ -1,10 +1,10 @@
-import activities from './activities.js';
-import callback from './callback.js';
-import connect from './connect.js';
-import disconnect from './disconnect.js';
-import me from './me.js';
-import webhook from './webhook.js';
-import weeklyReport from './weekly-report.js';
+import activities from '../../lib/api/strava/activities.js';
+import callback from '../../lib/api/strava/callback.js';
+import connect from '../../lib/api/strava/connect.js';
+import disconnect from '../../lib/api/strava/disconnect.js';
+import me from '../../lib/api/strava/me.js';
+import webhook from '../../lib/api/strava/webhook.js';
+import weeklyReport from '../../lib/api/strava/weekly-report.js';
 
 const ROUTES = new Map([
   ['activities', activities],

@@ -692,12 +692,14 @@ test('stored activities include Apple Health ingests without Strava auth', async
     APPLE_HEALTH_INGEST_TOKEN: 'apple-secret',
     DISCORD_WEBHOOK_URL: undefined
   });
+  const startedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const endedAt = new Date(startedAt.getTime() + 31 * 60 * 1000);
 
   const body = {
     external_run_id: 'apple_health_STORE-001',
     user_id: 'youngkwon',
-    started_at: '2026-06-20T06:00:00Z',
-    ended_at: '2026-06-20T06:31:00Z',
+    started_at: startedAt.toISOString(),
+    ended_at: endedAt.toISOString(),
     distance_m: 5000,
     moving_time_s: 1800,
     elevation_gain_m: 25,
