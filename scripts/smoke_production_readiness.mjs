@@ -7,7 +7,10 @@ import { supabaseFetch } from '../lib/supabase-rest.js';
 
 const DEFAULT_BASE_URL = 'https://strava-run-log.vercel.app';
 const DEFAULT_PHYSIO_APP_ENV_FILE = '/Users/youngkwon/projects/physio_app/.env.local';
-const DEFAULT_LOCAL_SECRET_ENV_FILE = '.secrets/live_metrics.env';
+const DEFAULT_LOCAL_SECRET_ENV_FILES = [
+  '.secrets/run_log_admin.env',
+  '.secrets/live_metrics.env'
+];
 const DEFAULT_LOG_WINDOW = '10m';
 const DEFAULT_LOG_LIMIT = '50';
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -52,7 +55,7 @@ function parseEnvFile(path) {
 
 function loadFallbackEnv() {
   const candidates = [
-    DEFAULT_LOCAL_SECRET_ENV_FILE,
+    ...DEFAULT_LOCAL_SECRET_ENV_FILES,
     process.env.PRODUCTION_SMOKE_ENV_FILE,
     process.env.PGHD_SMOKE_ENV_FILE,
     DEFAULT_PHYSIO_APP_ENV_FILE
