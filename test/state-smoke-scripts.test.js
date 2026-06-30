@@ -290,6 +290,8 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(script, /api\/run-log\/preflight/);
   assert.match(script, /RUN_LOG_ADMIN_TOKEN/);
   assert.match(script, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
+  assert.match(script, /LIVE_METRICS_TOKEN/);
+  assert.match(script, /\.secrets\/live_metrics\.env/);
   assert.match(script, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
   assert.match(script, /vercel logs/);
   assert.match(script, /--no-branch/);
@@ -298,6 +300,7 @@ test('package exposes production readiness smoke automation', () => {
   assert.match(script, /Insight 품질/);
   assert.match(readme, /npm run smoke:production/);
   assert.match(readme, /PRODUCTION_RUN_LOG_ADMIN_TOKEN/);
+  assert.match(readme, /LIVE_METRICS_TOKEN/);
   assert.match(readme, /PRODUCTION_PGHD_SUBJECT_PERSON_ID/);
   assert.match(readme, /Vercel error\/warning logs/);
 });
