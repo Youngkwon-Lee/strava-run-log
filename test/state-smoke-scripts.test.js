@@ -208,6 +208,12 @@ test('package PGHD release gate chains unit, UI, E2E, and apply-path checks', ()
   );
 });
 
+test('package pins Vercel Node runtime below Node 24 deprecation noise', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+  assert.deepEqual(packageJson.engines, { node: '22.x' });
+});
+
 test('package exposes combined PGHD Physio handoff readiness check', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 

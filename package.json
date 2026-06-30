@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "test": "node --test",
     "gate:pghd:release": "npm test && npm run smoke:dashboard:viewport && npm run smoke:pghd && npm run check:pghd:smoke-cleanup && npm run check:pghd:release-readiness",
