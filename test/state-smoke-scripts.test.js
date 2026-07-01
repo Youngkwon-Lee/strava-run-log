@@ -141,6 +141,7 @@ test('production readiness smoke helpers can be imported without executing remot
 
 test('Vercel ignored build skips non-deployment-only changes', () => {
   assert.equal(isVercelBuildRelevantPath('api/live/metrics.js'), true);
+  assert.equal(isVercelBuildRelevantPath('.vercelignore'), true);
   assert.equal(isVercelBuildRelevantPath('lib/run-store.js'), true);
   assert.equal(isVercelBuildRelevantPath('index.html'), true);
   assert.equal(isVercelBuildRelevantPath('scripts/vercel_ignore_build.mjs'), true);
@@ -167,6 +168,7 @@ test('Vercel ignored build skips non-deployment-only changes', () => {
   );
 
   assert.equal(buildVercelIgnoreDecision(['api/run-log/preflight.js']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision(['.vercelignore']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['lib/run-store.js']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['scripts/vercel_ignore_build.mjs']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['vercel.json']).shouldIgnore, false);
