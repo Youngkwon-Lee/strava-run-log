@@ -55,19 +55,75 @@ function gitDiffNames(args, cwd) {
   return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-export function readChangedFiles({ cwd = process.cwd(), env = process.env } = {}) {
-  const previousSha = String(env.VERCEL_GIT_PREVIOUS_SHA || '').trim();
-  if (previousSha && !/^0+$/.test(previousSha)) {
-    return gitDiffNames([previousSha, 'HEAD'], cwd);
+function githubPullFilesUrl(env) {
+  const owner = String(env.VERCEL_GIT_REPO_OWNER || '').trim();
+  const repo = String(env.VERCEL_GIT_REPO_SLUG || '').trim();
+  const pullRequestId = String(env.VERCEL_GIT_PULL_REQUEST_ID || '').trim();
+
+  if (!owner || !repo || !pullRequestId) {
+    return null;
   }
 
-  return gitDiffNames(['HEAD^', 'HEAD'], cwd);
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(pullRequestId)}/files?per_page=100`;
 }
 
-function main() {
+async function readGitHubPullFiles({ env, fetchImpl }) {
+  const url = githubPullFilesUrl(env);
+  if (!url) {
+    return null;
+  }
+
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('fetch is not available for GitHub pull request file lookup');
+  }
+
+  const response = await fetchImpl(url, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'user-agent': 'strava-run-log-vercel-ignore-build'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub pull request file lookup failed with ${response.status}`);
+  }
+
+  const files = await response.json();
+  return files.map((file) => file.filename).filter(Boolean);
+}
+
+export async function readChangedFiles({
+  cwd = process.cwd(),
+  env = process.env,
+  fetchImpl = globalThis.fetch
+} = {}) {
+  const gitErrors = [];
+  const pullFiles = await readGitHubPullFiles({ env, fetchImpl });
+  if (pullFiles) {
+    return pullFiles;
+  }
+
+  const previousSha = String(env.VERCEL_GIT_PREVIOUS_SHA || '').trim();
+  if (previousSha && !/^0+$/.test(previousSha)) {
+    try {
+      return gitDiffNames([previousSha, 'HEAD'], cwd);
+    } catch (error) {
+      gitErrors.push(error.message);
+    }
+  }
+
+  try {
+    return gitDiffNames(['HEAD^', 'HEAD'], cwd);
+  } catch (error) {
+    gitErrors.push(error.message);
+    throw new Error(gitErrors.join('; '));
+  }
+}
+
+async function main() {
   let decision;
   try {
-    decision = buildVercelIgnoreDecision(readChangedFiles());
+    decision = buildVercelIgnoreDecision(await readChangedFiles());
   } catch (error) {
     console.log(`Vercel ignore build: changed files could not be determined; continuing build. ${error.message}`);
     process.exit(1);
