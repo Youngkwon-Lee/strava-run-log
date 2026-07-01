@@ -146,6 +146,7 @@ GitHub Actions에서도 같은 production smoke를 실행합니다.
 Vercel preview build는 `vercel.json`의 `ignoreCommand`로 제어합니다.
 `.github/`, `test/`, 문서만 바뀐 PR은 build를 건너뛰고, `api/`, `lib/`,
 HTML, package/config 변경은 계속 build합니다.
+docs-only 검증 PR에서는 Vercel check가 build 없이 성공해야 합니다.
 
 서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
 
