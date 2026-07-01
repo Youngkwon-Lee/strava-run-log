@@ -17,6 +17,10 @@ import {
   buildVercelLogsArgs,
   parseVercelLogOutput
 } from '../scripts/smoke_production_readiness.mjs';
+import {
+  buildVercelIgnoreDecision,
+  isVercelBuildRelevantPath
+} from '../scripts/vercel_ignore_build.mjs';
 import { buildSmokeCleanupReport } from '../scripts/check_pghd_smoke_cleanup.mjs';
 import { checkPhysioHandoffSurface } from '../scripts/check_pghd_physio_handoff_readiness.mjs';
 
@@ -133,6 +137,40 @@ test('production readiness smoke helpers can be imported without executing remot
     hasLogs: true,
     sample: ['error lambda GET /api/example', 'stack line']
   });
+});
+
+test('Vercel ignored build skips non-deployment-only changes', () => {
+  assert.equal(isVercelBuildRelevantPath('api/live/metrics.js'), true);
+  assert.equal(isVercelBuildRelevantPath('lib/run-store.js'), true);
+  assert.equal(isVercelBuildRelevantPath('index.html'), true);
+  assert.equal(isVercelBuildRelevantPath('scripts/vercel_ignore_build.mjs'), true);
+  assert.equal(isVercelBuildRelevantPath('vercel.json'), true);
+  assert.equal(isVercelBuildRelevantPath('.github/workflows/production-smoke.yml'), false);
+  assert.equal(isVercelBuildRelevantPath('test/state-smoke-scripts.test.js'), false);
+  assert.equal(isVercelBuildRelevantPath('README.md'), false);
+
+  assert.deepEqual(
+    buildVercelIgnoreDecision([
+      '.github/workflows/production-smoke.yml',
+      'test/state-smoke-scripts.test.js',
+      'README.md'
+    ]),
+    {
+      changedFiles: [
+        '.github/workflows/production-smoke.yml',
+        'README.md',
+        'test/state-smoke-scripts.test.js'
+      ],
+      buildRelevantFiles: [],
+      shouldIgnore: true
+    }
+  );
+
+  assert.equal(buildVercelIgnoreDecision(['api/run-log/preflight.js']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision(['lib/run-store.js']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision(['scripts/vercel_ignore_build.mjs']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision(['vercel.json']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision([]).shouldIgnore, false);
 });
 
 test('state materialization smoke validates traceability inputs', () => {
