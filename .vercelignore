@@ -5,7 +5,8 @@
 output
 package-lock.json
 test
-scripts
+scripts/*
+!scripts/vercel_ignore_build.mjs
 supabase
 supabase/.branches
 supabase/.temp

@@ -19,7 +19,8 @@ import {
 } from '../scripts/smoke_production_readiness.mjs';
 import {
   buildVercelIgnoreDecision,
-  isVercelBuildRelevantPath
+  isVercelBuildRelevantPath,
+  readChangedFiles
 } from '../scripts/vercel_ignore_build.mjs';
 import { buildSmokeCleanupReport } from '../scripts/check_pghd_smoke_cleanup.mjs';
 import { checkPhysioHandoffSurface } from '../scripts/check_pghd_physio_handoff_readiness.mjs';
@@ -141,6 +142,7 @@ test('production readiness smoke helpers can be imported without executing remot
 
 test('Vercel ignored build skips non-deployment-only changes', () => {
   assert.equal(isVercelBuildRelevantPath('api/live/metrics.js'), true);
+  assert.equal(isVercelBuildRelevantPath('.vercelignore'), true);
   assert.equal(isVercelBuildRelevantPath('lib/run-store.js'), true);
   assert.equal(isVercelBuildRelevantPath('index.html'), true);
   assert.equal(isVercelBuildRelevantPath('scripts/vercel_ignore_build.mjs'), true);
@@ -167,10 +169,36 @@ test('Vercel ignored build skips non-deployment-only changes', () => {
   );
 
   assert.equal(buildVercelIgnoreDecision(['api/run-log/preflight.js']).shouldIgnore, false);
+  assert.equal(buildVercelIgnoreDecision(['.vercelignore']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['lib/run-store.js']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['scripts/vercel_ignore_build.mjs']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision(['vercel.json']).shouldIgnore, false);
   assert.equal(buildVercelIgnoreDecision([]).shouldIgnore, false);
+});
+
+test('Vercel ignored build reads GitHub PR file list when available', async () => {
+  const requestedUrls = [];
+  const changedFiles = await readChangedFiles({
+    env: {
+      VERCEL_GIT_REPO_OWNER: 'Youngkwon-Lee',
+      VERCEL_GIT_REPO_SLUG: 'strava-run-log',
+      VERCEL_GIT_PULL_REQUEST_ID: '17',
+      VERCEL_GIT_PREVIOUS_SHA: 'missing-sha'
+    },
+    fetchImpl: async (url) => {
+      requestedUrls.push(url);
+      return {
+        ok: true,
+        json: async () => [{ filename: 'README.md' }]
+      };
+    }
+  });
+
+  assert.deepEqual(changedFiles, ['README.md']);
+  assert.equal(
+    requestedUrls[0],
+    'https://api.github.com/repos/Youngkwon-Lee/strava-run-log/pulls/17/files?per_page=100'
+  );
 });
 
 test('state materialization smoke validates traceability inputs', () => {
