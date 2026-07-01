@@ -201,6 +201,41 @@ test('Vercel ignored build reads GitHub PR file list when available', async () =
   );
 });
 
+test('Vercel ignored build finds PR files from commit branch when PR id is unavailable', async () => {
+  const requestedUrls = [];
+  const changedFiles = await readChangedFiles({
+    env: {
+      VERCEL_GIT_REPO_OWNER: 'Youngkwon-Lee',
+      VERCEL_GIT_REPO_SLUG: 'strava-run-log',
+      VERCEL_GIT_COMMIT_REF: 'codex/verify-vercel-ignore-readme-only'
+    },
+    fetchImpl: async (url) => {
+      requestedUrls.push(url);
+      if (String(url).includes('/pulls?')) {
+        return {
+          ok: true,
+          json: async () => [{ number: 18 }]
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => [{ filename: 'README.md' }]
+      };
+    }
+  });
+
+  assert.deepEqual(changedFiles, ['README.md']);
+  assert.equal(
+    requestedUrls[0],
+    'https://api.github.com/repos/Youngkwon-Lee/strava-run-log/pulls?head=Youngkwon-Lee%3Acodex%2Fverify-vercel-ignore-readme-only&state=open&per_page=1'
+  );
+  assert.equal(
+    requestedUrls[1],
+    'https://api.github.com/repos/Youngkwon-Lee/strava-run-log/pulls/18/files?per_page=100'
+  );
+});
+
 test('state materialization smoke validates traceability inputs', () => {
   assert.doesNotThrow(() => assertSnapshotsHaveInputs([
     {
