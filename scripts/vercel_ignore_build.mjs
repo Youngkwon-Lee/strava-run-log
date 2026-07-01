@@ -55,24 +55,46 @@ function gitDiffNames(args, cwd) {
   return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-function githubPullFilesUrl(env) {
+function githubRepoParts(env) {
   const owner = String(env.VERCEL_GIT_REPO_OWNER || '').trim();
   const repo = String(env.VERCEL_GIT_REPO_SLUG || '').trim();
-  const pullRequestId = String(env.VERCEL_GIT_PULL_REQUEST_ID || '').trim();
 
-  if (!owner || !repo || !pullRequestId) {
+  if (!owner || !repo) {
     return null;
   }
 
+  return { owner, repo };
+}
+
+function githubPullFilesUrl(env) {
+  const repoParts = githubRepoParts(env);
+  const pullRequestId = String(env.VERCEL_GIT_PULL_REQUEST_ID || '').trim();
+
+  if (!repoParts || !pullRequestId) {
+    return null;
+  }
+
+  const { owner, repo } = repoParts;
   return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(pullRequestId)}/files?per_page=100`;
 }
 
-async function readGitHubPullFiles({ env, fetchImpl }) {
-  const url = githubPullFilesUrl(env);
-  if (!url) {
+function githubPullSearchUrl(env) {
+  const repoParts = githubRepoParts(env);
+  const branch = String(env.VERCEL_GIT_COMMIT_REF || '').trim();
+
+  if (!repoParts || !branch) {
     return null;
   }
 
+  const { owner, repo } = repoParts;
+  const url = new URL(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`);
+  url.searchParams.set('head', `${owner}:${branch}`);
+  url.searchParams.set('state', 'open');
+  url.searchParams.set('per_page', '1');
+  return url.href;
+}
+
+async function fetchGitHubJson(url, fetchImpl) {
   if (typeof fetchImpl !== 'function') {
     throw new Error('fetch is not available for GitHub pull request file lookup');
   }
@@ -88,7 +110,27 @@ async function readGitHubPullFiles({ env, fetchImpl }) {
     throw new Error(`GitHub pull request file lookup failed with ${response.status}`);
   }
 
-  const files = await response.json();
+  return response.json();
+}
+
+async function readGitHubPullFiles({ env, fetchImpl }) {
+  let url = githubPullFilesUrl(env);
+
+  if (!url) {
+    const searchUrl = githubPullSearchUrl(env);
+    if (!searchUrl) {
+      return null;
+    }
+
+    const pulls = await fetchGitHubJson(searchUrl, fetchImpl);
+    if (!pulls[0]?.number) {
+      return null;
+    }
+
+    url = `https://api.github.com/repos/${encodeURIComponent(env.VERCEL_GIT_REPO_OWNER)}/${encodeURIComponent(env.VERCEL_GIT_REPO_SLUG)}/pulls/${encodeURIComponent(pulls[0].number)}/files?per_page=100`;
+  }
+
+  const files = await fetchGitHubJson(url, fetchImpl);
   return files.map((file) => file.filename).filter(Boolean);
 }
 
