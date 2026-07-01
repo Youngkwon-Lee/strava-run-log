@@ -149,6 +149,7 @@ HTML, package/config 변경은 계속 build합니다.
 docs-only 검증 PR에서는 Vercel check가 build 없이 성공해야 합니다.
 README-only 검증은 이 규칙의 가장 작은 확인 단위입니다.
 검증용 README-only PR은 skip 확인 후 닫아도 됩니다.
+이 문장은 Vercel ignored build 재검증을 위한 임시 문서 변경입니다.
 
 서비스 키 없이 연결된 Supabase DB 스키마만 확인하려면 아래 스모크를 실행합니다. 이 쿼리는 트랜잭션 안에서 테스트 row를 만들고 `ROLLBACK`합니다.
 
