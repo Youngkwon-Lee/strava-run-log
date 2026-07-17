@@ -728,8 +728,25 @@ vercel --prod
 - `STRAVA_ACCESS_TOKEN`
 - `STRAVA_TOKEN_EXPIRES_AT`
 - `STRAVA_VERIFY_TOKEN` (임의 문자열)
+- `STRAVA_ATHLETE_ID`
+- `STRAVA_SUBSCRIPTION_ID`
 - `DISCORD_WEBHOOK_URL` (run-log 스레드 웹훅 URL)
 - `LIVE_METRICS_TOKEN` (Apple Watch/Health bridge 인증용 임의 문자열, 권장)
+- `PHYSIO_APP_BASE_URL` (예: `https://kinelo.co.kr`)
+- `KERNEL_API_V0_SHARED_TOKEN`
+- `KERNEL_API_V0_ORGANIZATION_ID`
+- `KERNEL_API_V0_SERVICE_ACCOUNT_ID`
+- `KERNEL_API_V0_SCOPES` (`events:append,timeline:read`)
+- `KERNEL_API_V0_TIMEOUT_MS` (선택, 기본 8000ms)
+- `HM1C_DOGFOOD_SUBJECT_PERSON_ID`
+- `HM1C_DOGFOOD_ORGANIZATION_ID`
+- `HM1C_DOGFOOD_ALLOWED_SOURCES` (`strava` 포함)
+
+Strava webhook은 Kernel API의 `events:append`가 성공한 뒤에만 `run_log_runs`를
+저장한다. `KERNEL_API_V0_ORGANIZATION_ID`와 `HM1C_DOGFOOD_ORGANIZATION_ID`가
+다르거나 `strava`가 허용 소스에 없으면 전송을 거부한다.
+`RUN_STORE_BACKEND=supabase`와 Supabase 저장 변수는
+`docs/run-history-store.md`의 프로덕션 체크리스트를 함께 따른다.
 
 3. Strava 구독 등록
 ```bash

@@ -449,33 +449,152 @@ test('webhook fetches activity details for activity create events', async () => 
   withEnv({
     STRAVA_ACCESS_TOKEN: 'access-token',
     STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
-    DISCORD_WEBHOOK_URL: undefined
+    STRAVA_ATHLETE_ID: '777',
+    STRAVA_SUBSCRIPTION_ID: '888',
+    DISCORD_WEBHOOK_URL: undefined,
+    PHYSIO_APP_BASE_URL: 'https://kinelo.example',
+    KERNEL_API_V0_SHARED_TOKEN: 'kernel-secret',
+    KERNEL_API_V0_ORGANIZATION_ID: '11111111-1111-4111-8111-111111111111',
+    KERNEL_API_V0_SERVICE_ACCOUNT_ID: 'strava-run-log',
+    KERNEL_API_V0_SCOPES: 'events:append,timeline:read',
+    HM1C_DOGFOOD_SUBJECT_PERSON_ID: '22222222-2222-4222-8222-222222222222',
+    HM1C_DOGFOOD_ORGANIZATION_ID: '11111111-1111-4111-8111-111111111111',
+    HM1C_DOGFOOD_ALLOWED_SOURCES: 'strava'
   });
   const { default: handler } = await importFresh('../api/strava/webhook.js');
 
   const fetchMock = mock.method(globalThis, 'fetch', async (url, options) => {
-    assert.match(String(url), /\/api\/v3\/activities\/12345\?include_all_efforts=true$/);
-    assert.equal(options.headers.Authorization, 'Bearer access-token');
+    if (String(url).includes('/api/v3/activities/12345')) {
+      assert.equal(options.headers.Authorization, 'Bearer access-token');
+      return Response.json({
+        id: 12345,
+        name: 'Morning Run',
+        start_date: '2026-07-17T00:15:00.000Z',
+        distance: 5000,
+        moving_time: 1850,
+        total_elevation_gain: 42,
+        average_heartrate: 150,
+        splits_metric: []
+      });
+    }
+
+    assert.equal(String(url), 'https://kinelo.example/api/kernel/v0');
+    assert.equal(options.headers.authorization, 'Bearer kernel-secret');
+    const body = JSON.parse(options.body);
+    assert.equal(body.payload.externalId, 'strava:12345');
     return Response.json({
-      id: 12345,
-      name: 'Morning Run',
-      distance: 5000,
-      moving_time: 1850,
-      total_elevation_gain: 42,
-      average_heartrate: 150,
-      splits_metric: []
+      success: true,
+      data: {
+        persisted: true,
+        activityEventId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      }
     });
   });
 
   const res = await callHandler(handler, {
     method: 'POST',
     query: {},
-    body: { object_type: 'activity', aspect_type: 'create', object_id: 12345 }
+    body: {
+      object_type: 'activity',
+      aspect_type: 'create',
+      object_id: 12345,
+      owner_id: 777,
+      subscription_id: 888
+    }
   });
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { ok: true });
-  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(fetchMock.mock.callCount(), 2);
+});
+
+test('webhook rejects activity events outside the configured Strava scope', async () => {
+  // Given
+  withEnv({ STRAVA_ATHLETE_ID: '777', STRAVA_SUBSCRIPTION_ID: '888' });
+  const { default: handler } = await importFresh('../api/strava/webhook.js');
+
+  // When
+  const res = await callHandler(handler, {
+    method: 'POST',
+    query: {},
+    body: {
+      object_type: 'activity',
+      aspect_type: 'create',
+      object_id: 12345,
+      owner_id: 999,
+      subscription_id: 888
+    }
+  });
+
+  // Then
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.body, { error: 'webhook scope mismatch' });
+});
+
+test('webhook fails closed when Strava scope configuration is missing', async () => {
+  // Given
+  withEnv({ STRAVA_ATHLETE_ID: undefined, STRAVA_SUBSCRIPTION_ID: undefined });
+  const { default: handler } = await importFresh('../api/strava/webhook.js');
+
+  // When
+  const res = await callHandler(handler, {
+    method: 'POST',
+    query: {},
+    body: { object_type: 'activity', aspect_type: 'create', object_id: 12345 }
+  });
+
+  // Then
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(res.body, { error: 'missing Strava webhook scope configuration' });
+});
+
+test('webhook returns a retryable failure when Kernel omits the activity event id', async () => {
+  // Given
+  await withTempRunStore();
+  withEnv({
+    STRAVA_ACCESS_TOKEN: 'access-token',
+    STRAVA_TOKEN_EXPIRES_AT: Math.floor(Date.now() / 1000) + 3600,
+    STRAVA_ATHLETE_ID: '777',
+    STRAVA_SUBSCRIPTION_ID: '888',
+    PHYSIO_APP_BASE_URL: 'https://kinelo.example',
+    KERNEL_API_V0_SHARED_TOKEN: 'kernel-secret',
+    KERNEL_API_V0_ORGANIZATION_ID: '11111111-1111-4111-8111-111111111111',
+    KERNEL_API_V0_SERVICE_ACCOUNT_ID: 'strava-run-log',
+    KERNEL_API_V0_SCOPES: 'events:append,timeline:read',
+    HM1C_DOGFOOD_SUBJECT_PERSON_ID: '22222222-2222-4222-8222-222222222222',
+    HM1C_DOGFOOD_ORGANIZATION_ID: '11111111-1111-4111-8111-111111111111',
+    HM1C_DOGFOOD_ALLOWED_SOURCES: 'strava'
+  });
+  mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).includes('/api/v3/activities/')) {
+      return Response.json({
+        id: 12345,
+        name: 'Morning Run',
+        start_date: '2026-07-17T00:15:00.000Z',
+        distance: 5000,
+        moving_time: 1850
+      });
+    }
+    return Response.json({ success: true, data: { persisted: true } });
+  });
+  const { default: handler } = await importFresh('../api/strava/webhook.js');
+
+  // When
+  const res = await callHandler(handler, {
+    method: 'POST',
+    query: {},
+    body: {
+      object_type: 'activity',
+      aspect_type: 'create',
+      object_id: 12345,
+      owner_id: 777,
+      subscription_id: 888
+    }
+  });
+
+  // Then
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(res.body, { error: 'Kernel API response is missing activityEventId' });
 });
 
 test('integration providers exposes provider rollout status', async () => {

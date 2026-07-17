@@ -173,6 +173,74 @@ test('Supabase run store upserts normalized runs through PostgREST', async () =>
   assert.equal(result.count, 1);
 });
 
+test('Supabase run store accepts a Kernel-owned activity event without writing it directly', async () => {
+  // Given
+  setEnv({
+    RUN_STORE_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  const calls = [];
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.pghd_activity_event_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+      return Response.json([{ ...body, created_at: '2026-07-17T00:20:00Z' }]);
+    }
+    return Response.json([]);
+  });
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+
+  // When
+  const result = await upsertStoredRun(
+    {
+      id: '12345',
+      source: 'strava',
+      startDate: '2026-07-17T00:15:00Z',
+      subjectPersonId: '22222222-2222-4222-8222-222222222222',
+      organizationId: '11111111-1111-4111-8111-111111111111',
+      pghdActivityEventId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    },
+    { persistPghdActivityEvent: false, resolveConnection: false, skipCount: true }
+  );
+
+  // Then
+  assert.equal(calls.some((call) => call.url.includes('/pghd_activity_events')), false);
+  assert.equal(calls.filter((call) => call.url.includes('/run_log_runs')).length, 1);
+  assert.equal(result.run.pghdActivityEventId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+});
+
+test('Supabase run store fails when a Kernel-owned event cannot retain its database link', async () => {
+  // Given
+  setEnv({
+    RUN_STORE_BACKEND: 'supabase',
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key'
+  });
+  mock.method(globalThis, 'fetch', async () =>
+    Response.json(
+      { code: 'PGRST204', message: "Could not find the 'pghd_activity_event_id' column" },
+      { status: 400 }
+    )
+  );
+  const { upsertStoredRun } = await importFresh('../lib/run-store.js');
+
+  // When / Then
+  await assert.rejects(
+    upsertStoredRun(
+      {
+        id: '12345',
+        source: 'strava',
+        startDate: '2026-07-17T00:15:00Z',
+        pghdActivityEventId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      },
+      { persistPghdActivityEvent: false, resolveConnection: false, skipCount: true }
+    ),
+    /pghd_activity_event_id/
+  );
+});
+
 test('Supabase run store resolves PGHD connection before upsert', async () => {
   setEnv({
     RUN_STORE_BACKEND: 'supabase',
