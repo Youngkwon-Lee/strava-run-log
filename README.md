@@ -40,6 +40,10 @@ physio_app 연동용 API 계약은 [`docs/physio-app-api-contract.md`](docs/phys
 실행 순서와 release/staging gate 선택 기준은
 [`docs/pghd-execution-roadmap.md`](docs/pghd-execution-roadmap.md)를 봅니다.
 
+Supabase의 로컬 포트, 허용된 클라우드 프로젝트, 환경 선택 기준은
+[`docs/supabase-routing.md`](docs/supabase-routing.md)를 봅니다. 원격 작업 전에는
+`node scripts/check_supabase_routing.mjs`로 현재 checkout의 설정과 link 대상을 확인합니다.
+
 ---
 
 ## Setup (Detailed)
