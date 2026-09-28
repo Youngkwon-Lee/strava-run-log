@@ -123,11 +123,13 @@ test('production readiness smoke helpers can be imported without executing remot
       'Fetching logs...',
       'No logs found for team/app',
       'Vercel CLI 54.18.6 (Node.js 22.23.0)',
-      '─────────────────────────────────────────────────────────────────────────',
-      'Update available! v50.40.0 ≫ v54.18.6',
-      'Changelog: https://github.com/vercel/vercel/releases/tag/vercel%4054.18.6',
-      'Run `npm i -g vercel@latest` to update.',
-      '─────────────────────────────────────────────────────────────────────────'
+      '╭──────────────────────────────────────────────────────────────────────────────╮',
+      '│                                                                              │',
+      '│                     Update available! v54.18.6 ≫ v60.1.3                     │',
+      '│   Changelog: https://github.com/vercel/vercel/releases/tag/vercel%4060.1.3   │',
+      '│                   Run `npm i -g vercel@latest` to update.                    │',
+      '│                                                                              │',
+      '╰──────────────────────────────────────────────────────────────────────────────╯'
     ].join('\n')),
     {
       hasLogs: false,

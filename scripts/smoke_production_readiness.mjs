@@ -359,7 +359,7 @@ export function parseVercelLogOutput(output) {
     /^> You can learn more, including how to opt-out/i,
     /^> https:\/\/vercel\.com\/docs\/cli\/about-telemetry/i,
     /^Vercel CLI \d+\.\d+\.\d+ \(Node\.js [^)]+\)$/i,
-    /^─+$/,
+    /^[─╭╮╰╯│\s]+$/u,
     /^Update available! v[\d.]+/i,
     /^Changelog: https:\/\/github\.com\/vercel\/vercel\/releases\//i,
     /^Run `npm i -g vercel@latest` to update\./i,
@@ -367,7 +367,7 @@ export function parseVercelLogOutput(output) {
   ];
   const lines = stripAnsi(output)
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/^│\s?/, '').replace(/\s?│$/, '').trim())
     .filter(Boolean)
     .filter((line) => !noise.some((pattern) => pattern.test(line)));
 
